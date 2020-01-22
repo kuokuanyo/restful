@@ -14,3 +14,9 @@ func (r Repository) Raw(DB *gorm.DB, describe string) (*sql.Rows, error) {
 	}
 	return rows, nil
 }
+
+//RawOneData : execute sql command
+func (r Repository) RawOneData(DB *gorm.DB, describe string) *sql.Row {
+	row := DB.Raw(describe).Row()
+	return row
+}

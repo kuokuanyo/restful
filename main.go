@@ -26,6 +26,11 @@ func main() {
 	//connect database
 	router.HandleFunc("/v1", controller.GetAllDB()).Methods("GET")
 	router.HandleFunc("/v1", controller.ConnectDB()).Methods("POST")
+	router.HandleFunc("/v1", controller.UpdateDB()).Methods("PUT")
+	router.HandleFunc("/v1", controller.DeleteDB()).Methods("DELETE")
+	router.HandleFunc("/v1/_schema/{db_alias}", controller.GetAllSchema()).Methods("GET")
+	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.GetAllFields()).Methods("GET")
+	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.GetAllFields()).Methods("POST")
 	//server connect
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		panic(err)

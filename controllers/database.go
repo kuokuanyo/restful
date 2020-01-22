@@ -14,16 +14,110 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//DeleteDB :delete db information from table users.
+//@Summary delete db information from table users.
+//@Tags DataBase
+//@Accept json
+//@Produce json
+//@Param filter string array false "SQL-like filter to limit the records to retrieve.if no filter, all datas could delete."
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1 [delete]
+func (c Controller) DeleteDB() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			message model.Error
+			filter  = r.URL.Query()["filter"]
+			sql     string
+			repo    repository.Repository
+		)
+		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+		if err != nil {
+			message.Error = "Connect mysql.user db error"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if len(filter) > 0 {
+			if strings.Contains(filter[0], " and ") {
+				var newfilter []string
+				split := strings.Split(filter[0], " and ")
+				for i := 0; i < len(split); i++ {
+					s := split[i]
+					splitequal := strings.Split(s, "=")
+					splitequal[1] = fmt.Sprintf(`"%s"`, splitequal[1])
+					j := strings.Join(splitequal, "=")
+					newfilter = append(newfilter, j)
+				}
+				j := strings.Join(newfilter, " and ")
+				sql += fmt.Sprintf("delete from users where %s ", j)
+			} else if strings.Contains(filter[0], "like") {
+				sql += fmt.Sprintf("delete from users where %s ", filter[0])
+			} else {
+				split := strings.Split(filter[0], "=")
+				split[1] = fmt.Sprintf(`"%s"`, split[1])
+				j := strings.Join(split, "=")
+				sql += fmt.Sprintf("delete from users where %s ", j)
+			}
+		} else {
+			sql = "delete from users"
+		}
+		if err = repo.Exec(DB, sql); err != nil {
+			message.Error = "Delete information from users error."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		utils.SendSuccess(w, "Successfully delete information from users.")
+	}
+}
+
+//UpdateDB :update db information(only could update alias)
+//@Summary update db information(only could update alias)
+//@Tags DataBase
+//@Accept json
+//@Produce json
+//@Param old_alias query string false "old_alias"
+//@Param old_alias query string false "new_alias"
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1 [put]
+func (c Controller) UpdateDB() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			message  model.Error
+			oldalias = r.URL.Query()["old_alias"]
+			newalias = r.URL.Query()["new_alias"]
+			repo     repository.Repository
+		)
+		if len(oldalias) > 0 && len(newalias) > 0 {
+			sql := fmt.Sprintf(`update users set db_alias="%s" where db_alias="%s"`, newalias[0], oldalias[0])
+			DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+			if err != nil {
+				message.Error = "Connect mysql.user db error"
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			if err = repo.Exec(DB, sql); err != nil {
+				message.Error = "Update db_alias error"
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			utils.SendSuccess(w, "Successfully update db_alias.")
+		} else {
+			utils.SendSuccess(w, "No execute update command.")
+		}
+	}
+}
+
 //GetAllDB :get db information
 //@Summary get database information
 //@Tags DataBase
 //@Accept json
 //@Produce json
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
-//@Param filter query array false "SQL-like filter to limit the records to retrieve."
-//@Param limit query array false "Set to limit the filter results."
-//@Param offset query array false "Set to offset the filter results to a particular record count."
-//@Param order query array false "SQL-like order containing field and direction for filter results."
+//@Param filter query string false "SQL-like filter to limit the records to retrieve."
+//@Param limit query integer false "Set to limit the filter results."
+//@Param offset query integer false "Set to offset the filter results to a particular record count."
+//@Param order query string false "SQL-like order containing field and direction for filter results."
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1 [get]
@@ -88,7 +182,6 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 		if len(order) > 0 {
 			sql += fmt.Sprintf("order by %s ", order[0])
 		}
-		fmt.Println(sql)
 		var (
 			value     = make([]string, len(slicefields))
 			valuePtrs = make([]interface{}, len(slicefields)) //scan parameter need pointer
