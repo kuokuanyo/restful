@@ -30,7 +30,9 @@ func main() {
 	router.HandleFunc("/v1", controller.DeleteDB()).Methods("DELETE")
 	router.HandleFunc("/v1/_schema/{db_alias}", controller.GetAllSchema()).Methods("GET")
 	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.GetAllFields()).Methods("GET")
-	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.GetAllFields()).Methods("POST")
+	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.CreateSchema()).Methods("POST")
+	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.UpdateSchema()).Methods("PUT")
+	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.DeleteSchema()).Methods("DELETE")
 	//server connect
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		panic(err)

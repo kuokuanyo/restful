@@ -14,8 +14,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-//DeleteDB :delete db information from table users.
-//@Summary delete db information from table users.
+//DeleteDB :delete information of database from table users by some conditions.
+//@Summary delete information of database from table users by some conditions.
 //@Tags DataBase
 //@Accept json
 //@Produce json
@@ -70,8 +70,8 @@ func (c Controller) DeleteDB() http.HandlerFunc {
 	}
 }
 
-//UpdateDB :update db information(only could update alias)
-//@Summary update db information(only could update alias)
+//UpdateDB :update alias of database from table users(only could update alias)
+//@Summary update alias of database from table users(only could update alias)
 //@Tags DataBase
 //@Accept json
 //@Produce json
@@ -101,15 +101,15 @@ func (c Controller) UpdateDB() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			utils.SendSuccess(w, "Successfully update db_alias.")
+			utils.SendSuccess(w, "Successfully update alias of database.")
 		} else {
 			utils.SendSuccess(w, "No execute update command.")
 		}
 	}
 }
 
-//GetAllDB :get db information
-//@Summary get database information
+//GetAllDB :get all db_alias information from table users
+//@Summary get all db_alias information from table users
 //@Tags DataBase
 //@Accept json
 //@Produce json
@@ -211,11 +211,12 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 	}
 }
 
-//ConnectDB :create database information
-//@Summary create database information to database engine
+//ConnectDB :Add information of database to database engine
+//@Summary Add information of database to database engine
 //@Tags DataBase
 //@Accept json
 //@Produce json
+//@Param information body models.DBInformation true "information of database"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1 [post]
@@ -282,6 +283,6 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successful create information to user of database")
+		utils.SendSuccess(w, "Successful add information of engine to user of database")
 	}
 }
