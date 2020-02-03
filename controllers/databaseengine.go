@@ -66,7 +66,7 @@ func (c Controller) DeleteDB() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully delete information from users.")
+		utils.SendSuccess(w, "Successfully")
 	}
 }
 
@@ -101,7 +101,7 @@ func (c Controller) UpdateDB() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			utils.SendSuccess(w, "Successfully update alias of database.")
+			utils.SendSuccess(w, "Successfully")
 		} else {
 			utils.SendSuccess(w, "No execute update command.")
 		}
@@ -230,14 +230,14 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			repo        repository.Repository
 		)
 		json.NewDecoder(r.Body).Decode(&information) //decode dbinformation
-		switch strings.ToLower(information.DB_Type) {
+		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DB_UserName,
-				information.DB_Password,
-				information.DB_Host,
-				information.DB_Port,
-				information.DB)
+				information.DBUserName,
+				information.DBPassword,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 			if err != nil {
 				message.Error = "Database information error"
@@ -246,11 +246,11 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			}
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DB_UserName,
-				information.DB_Password,
-				information.DB_Host,
-				information.DB_Port,
-				information.DB)
+				information.DBUserName,
+				information.DBPassword,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
 			if err != nil {
 				message.Error = "Database information error"
@@ -267,22 +267,22 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 		}
 		//encrypt password
 		//func GenerateFromPassword(password []byte, cost int) ([]byte, error)
-		hash, err := bcrypt.GenerateFromPassword([]byte(information.DB_Password), 10)
+		hash, err := bcrypt.GenerateFromPassword([]byte(information.DBPassword), 10)
 		if err != nil {
 			message.Error = "encrypt password error"
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		information.DB_Password = string(hash)
+		information.DBPassword = string(hash)
 		insert := fmt.Sprintf(`insert into users values ("%s", "%s", "%s", "%s", "%s", "%s", "%s", %d, %d)`,
-			information.DB_Alias, information.DB_Type, information.DB_UserName,
-			information.DB_Password, information.DB_Host, information.DB_Port,
-			information.DB, information.MaxIdle, information.MaxOpen)
+			information.DBAlias, information.DBType, information.DBUserName,
+			information.DBPassword, information.DBHost, information.DBPort,
+			information.DBName, information.MaxIdle, information.MaxOpen)
 		if err = repo.Exec(DB, insert); err != nil {
 			message.Error = "insert value error"
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successful add information of engine to user of database")
+		utils.SendSuccess(w, "Successful")
 	}
 }
