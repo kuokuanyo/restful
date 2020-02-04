@@ -153,16 +153,16 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 		}
 		if len(filter) > 0 {
 			if strings.Contains(filter[0], " and ") {
-				var newfilter []string
+				var slicefilter []string
 				split := strings.Split(filter[0], " and ")
 				for i := 0; i < len(split); i++ {
 					s := split[i]
 					splitequal := strings.Split(s, "=")
 					splitequal[1] = fmt.Sprintf(`"%s"`, splitequal[1])
 					j := strings.Join(splitequal, "=")
-					newfilter = append(newfilter, j)
+					slicefilter = append(slicefilter, j)
 				}
-				j := strings.Join(newfilter, " and ")
+				j := strings.Join(slicefilter, " and ")
 				sql += fmt.Sprintf("where %s ", j)
 			} else if strings.Contains(filter[0], "like") {
 				sql += fmt.Sprintf("where %s ", filter[0])
