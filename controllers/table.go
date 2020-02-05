@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,16 +16,191 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//UpdateData :Update (replace) one or more records.
+func (c Controller) UpdateData() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			information model.DBInformation
+			description model.Description
+			repo        repository.Repository
+			sqlorder    string
+			message     model.Error
+			params      = mux.Vars(r)
+			tablename   = params["table_name"]
+			dbalias     = params["db_alias"]
+			filter      = r.URL.Query()["filter"]
+			//related = r.URL.Query()["related"]
+			password = r.URL.Query()["db_password"][0]
+		)
+		if password == "" {
+			message.Error = "Required password."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		//decode
+		json.NewDecoder(r.Body).Decode(&description)
+		if description.Condition == "" {
+			message.Error = "Required condition for updating"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		
+		if len(filter) > 0 {
+			if strings.Contains(filter[0], " and ") {
+				var slicefilter []string
+				split := strings.Split(filter[0], " and ")
+				for i := 0; i < len(split); i++ {
+					s := split[i]
+					splitequal := strings.Split(s, "=")
+					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+					j := strings.Join(split, "=")
+					
+				}
+			}
+		}
+	}
+}
+
+//AddData :Create one or more records.
+//@Summary Create one or more records.
+//@Tags Table
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "table name"
+//@Param db_password query string true "database engine password"
+//@Param fields query array true "set fields for adding value"
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name} [post]
+func (c Controller) AddData() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			information model.DBInformation
+			insertvalue model.InsertValue
+			repo        repository.Repository
+			sqlorder    string
+			message     model.Error
+			params      = mux.Vars(r)
+			tablename   = params["table_name"]
+			dbalias     = params["db_alias"]
+			fields      = r.URL.Query()["fields"][0]
+			//related     = r.URL.Query()["related"]
+			password = r.URL.Query()["db_password"][0]
+		)
+		if password == "" {
+			message.Error = "Require password."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		//decode
+		json.NewDecoder(r.Body).Decode(&insertvalue)
+		if insertvalue.Value == "" {
+			message.Error = "Required value for adding"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if len(fields) > 0 {
+			splitvalue := strings.Split(insertvalue.Value, ",")
+			splitfield := strings.Split(fields, ",")
+			if len(splitvalue) != len(splitfield) {
+				message.Error = "Column count doesn't match value."
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+		} else {
+			message.Error = "Must set fields for adding value"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+
+		//get informations from db_alias
+		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+		if err != nil {
+			message.Error = "Connect mysql.user db error."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		//scan information
+		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+			&information.DBPassword, &information.DBHost, &information.DBPort,
+			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+		//decrypt password
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = "Error password."
+			utils.SendError(w, http.StatusUnauthorized, message)
+			return
+		}
+		//identify db_type
+		switch strings.ToLower(information.DBType) {
+		case "mysql":
+			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mysql", Source) //connect db
+		case "mssql":
+			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mssql", Source)
+		}
+		if err != nil {
+			message.Error = "Database information error"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		switch strings.ToLower(information.DBType) {
+		case "mysql":
+			sqlorder = fmt.Sprintf(`insert into %s(%s) values (%s)`, tablename, fields, insertvalue.Value)
+		case "mssql":
+			sqlorder = fmt.Sprintf(`insert into %s.dbo.%s(%s) values (%s)`, information.DBName, tablename, fields, insertvalue.Value)
+		}
+		if err = repo.Exec(DB, sqlorder); err != nil {
+			message.Error = "Add value error."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		utils.SendSuccess(w, "Successfully.")
+	}
+}
+
 //GetAllData :Retrieve one or more records.
+//@Summary Retrieve one or more records.
+//@Tags Table
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "table name"
+//@Param db_password query string true "database engine password"
+//@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Param filter query string false "SQL-like filter to limit the records to retrieve."
+//@Param limit query integer false "Set to limit the filter results."
+//@Param offset query integer false "Set to offset the filter results to a particular record count."
+//@Param order query string false "SQL-like order containing field and direction for filter results."
+//@Param group query string false "Comma-delimited list of the fields used for grouping of filter results."
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name} [get]
 func (c Controller) GetAllData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
+			rows        *sql.Rows
 			message     model.Error
 			params      = mux.Vars(r)
-			password    = r.URL.Query()["db_password"][0]
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
+			password    = r.URL.Query()["db_password"][0]
 			fields      = r.URL.Query()["fields"]
+			related     = r.URL.Query()["related"]
 			filter      = r.URL.Query()["filter"]
 			order       = r.URL.Query()["order"]
 			limit       = r.URL.Query()["limit"]
@@ -35,9 +211,8 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			repo        repository.Repository
 			sqlorder    string
 			slicefields []string
-			rows        *sql.Rows
-			datas       []map[string]interface{}
 			coltype     []string
+			datas       []map[string]interface{}
 		)
 		if password == "" {
 			message.Error = "Require password"
@@ -105,6 +280,9 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					utils.SendError(w, http.StatusInternalServerError, message)
 					return
 				}
+			}
+			if len(related) > 0 {
+
 			}
 			if len(filter) > 0 {
 				if strings.Contains(filter[0], " and ") {

@@ -120,7 +120,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			information model.DBInformation
-			description model.SchemaDescription
+			description model.Description
 			message     model.Error
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
@@ -213,7 +213,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			information model.DBInformation
-			description model.SchemaDescription
+			description model.Description
 			message     model.Error
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]

@@ -1,6 +1,6 @@
 package model
 
-//SchemaDescription :struct
-type SchemaDescription struct {
+//Description :struct
+type Description struct {
 	Condition string
 }

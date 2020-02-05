@@ -38,6 +38,8 @@ func main() {
 	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}/_field/{field_name}", controller.UpdateOneField()).Methods("PUT")
 	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}/_field/{field_name}", controller.DropOneField()).Methods("DELETE")
 	router.HandleFunc("/v1/_table/{db_alias}/{table_name}", controller.GetAllData()).Methods("GET")
+	router.HandleFunc("/v1/_table/{db_alias}/{table_name}", controller.AddData()).Methods("POST")
+	router.HandleFunc("/v1/_table/{db_alias}/{table_name}", controller.UpdateData()).Methods("PUT")
 	//server connect
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		panic(err)
