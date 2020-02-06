@@ -20,7 +20,7 @@ import (
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
@@ -49,18 +49,18 @@ func (c Controller) DropOneField() http.HandlerFunc {
 		}
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -84,7 +84,7 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -95,7 +95,7 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			sql = fmt.Sprintf(`ALTER TABLE %s.dbo.%s DROP COLUMN %s`, information.DBName, tablename, fieldname)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "drop column error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -108,9 +108,9 @@ func (c Controller) DropOneField() http.HandlerFunc {
 //@Tags Field
 //@Accept json
 //@Produce json
-//@Param description body models.SchemaDescription true "Update the description of schema"
+//@Param condition body models.SchemaDescription true "Update the description of schema"
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
@@ -142,18 +142,18 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 		json.NewDecoder(r.Body).Decode(&description)
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -177,7 +177,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -188,7 +188,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			sql = fmt.Sprintf(`alter table %s.dbo.%s ALTER COLUMN %s %s`, information.DBName, tablename, fieldname, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "Update one field error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -201,9 +201,9 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 //@Tags Field
 //@Accept json
 //@Produce json
-//@Param description body models.SchemaDescription true "description of field"
+//@Param condition body models.SchemaDescription true "description of field"
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
@@ -236,18 +236,18 @@ func (c Controller) AddOneField() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -271,7 +271,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -282,7 +282,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			sql = fmt.Sprintf(`alter table %s.dbo.%s add %s %s`, information.DBName, tablename, fieldname, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "Add a new field error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -296,7 +296,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param field path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.FieldStructure "Successfully"
@@ -326,18 +326,18 @@ func (c Controller) GetOneField() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -352,7 +352,7 @@ func (c Controller) GetOneField() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -368,7 +368,7 @@ func (c Controller) GetOneField() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -377,7 +377,7 @@ func (c Controller) GetOneField() http.HandlerFunc {
 			row = repo.RawOneData(DB, sql)
 		}
 		if err != nil {
-			message.Error = "Get informations of field error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}

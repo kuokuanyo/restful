@@ -16,7 +16,135 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//DeleteData :Delete one or more records.
+//@Summary Delete one or more records.
+//@Tags Table
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param db_password query string true "database engine password"
+//@Param filter query array false "SQL-like filter to delete records."
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name} [delete]
+func (c Controller) DeleteData() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			information model.DBInformation
+			repo        repository.Repository
+			sqlorder    string
+			message     model.Error
+			params      = mux.Vars(r)
+			dbalias     = params["db_alias"]
+			tablename   = params["table_name"]
+			password    = r.URL.Query()["db_password"][0]
+			//related = r.URL.Query()["related"]
+			filter = r.URL.Query()["filter"]
+		)
+		if password == "" {
+			message.Error = "Required password."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+		if err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+			&information.DBPassword, &information.DBHost, &information.DBPort,
+			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		switch strings.ToLower(information.DBType) {
+		case "mysql":
+			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mysql", Source) //connect db
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			sqlorder = fmt.Sprintf(`delete from %s `, tablename)
+		case "mssql":
+			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mssql", Source)
+			sqlorder = fmt.Sprintf(`delete from %s.dbo.%s `, information.DBName, tablename)
+		}
+		if len(filter) > 0 {
+			if strings.Contains(filter[0], " and ") {
+				var slicefilter []string
+				split := strings.Split(filter[0], " and ")
+				for i := 0; i < len(split); i++ {
+					s := split[i]
+					splitequal := strings.Split(s, "=")
+					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+					j := strings.Join(splitequal, "=")
+					slicefilter = append(slicefilter, j)
+				}
+				j := strings.Join(slicefilter, " and ")
+				sqlorder += fmt.Sprintf(`where %s`, j)
+			} else if strings.Contains(filter[0], " or ") {
+				var slicefilter []string
+				split := strings.Split(filter[0], " or ")
+				for i := 0; i < len(split); i++ {
+					s := split[i]
+					splitequal := strings.Split(s, "=")
+					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[i])
+					j := strings.Join(splitequal, "=")
+					slicefilter = append(slicefilter, j)
+				}
+				j := strings.Join(slicefilter, " or ")
+				sqlorder += fmt.Sprintf("where %s", j)
+			} else if strings.Contains(filter[0], " like ") {
+				sqlorder += fmt.Sprintf("where %s ", filter[0])
+			} else {
+				split := strings.Split(filter[0], "=")
+				split[1] = fmt.Sprintf(`'%s'`, split[1])
+				j := strings.Join(split, "=")
+				sqlorder += fmt.Sprintf("where %s ", j)
+			}
+		}
+		if err = repo.Exec(DB, sqlorder); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		utils.SendSuccess(w, "Successfully.")
+	}
+}
+
 //UpdateData :Update (replace) one or more records.
+//@Summary Update (replace) one or more records.
+//@Tags Table
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param db_password query string true "database engine password"
+//@Param filter query array true "SQL-like filter to update records"
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Param condition body models.Description true "condition of Updating"
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name} [put]
 func (c Controller) UpdateData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
@@ -40,11 +168,55 @@ func (c Controller) UpdateData() http.HandlerFunc {
 		//decode
 		json.NewDecoder(r.Body).Decode(&description)
 		if description.Condition == "" {
-			message.Error = "Required condition for updating"
+			message.Error = "Required condition for updating."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		
+		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+		if err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+			&information.DBPassword, &information.DBHost, &information.DBPort,
+			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		switch strings.ToLower(information.DBType) {
+		case "mysql":
+			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mysql", Source) //connect db
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			sqlorder = fmt.Sprintf(`update %s %s `, tablename, description.Condition)
+		case "mssql":
+			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mssql", Source)
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			sqlorder = fmt.Sprintf(`update %s.dbo.%s %s `, information.DBName, tablename, description.Condition)
+		}
 		if len(filter) > 0 {
 			if strings.Contains(filter[0], " and ") {
 				var slicefilter []string
@@ -53,11 +225,38 @@ func (c Controller) UpdateData() http.HandlerFunc {
 					s := split[i]
 					splitequal := strings.Split(s, "=")
 					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-					j := strings.Join(split, "=")
-					
+					j := strings.Join(splitequal, "=")
+					slicefilter = append(slicefilter, j)
 				}
+				j := strings.Join(slicefilter, " and ")
+				sqlorder += fmt.Sprintf("where %s", j)
+			} else if strings.Contains(filter[0], " or ") {
+				var slicefilter []string
+				split := strings.Split(filter[0], " or ")
+				for i := 0; i < len(split); i++ {
+					s := split[i]
+					splitequal := strings.Split(s, "=")
+					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+					j := strings.Join(splitequal, "=")
+					slicefilter = append(slicefilter, j)
+				}
+				j := strings.Join(slicefilter, " or ")
+				sqlorder += fmt.Sprintf("where %s", j)
+			} else if strings.Contains(filter[0], " like ") {
+				sqlorder += fmt.Sprintf("where %s ", filter[0])
+			} else {
+				split := strings.Split(filter[0], "=")
+				split[1] = fmt.Sprintf(`'%s'`, split[1])
+				j := strings.Join(split, "=")
+				sqlorder += fmt.Sprintf("where %s", j)
 			}
 		}
+		if err = repo.Exec(DB, sqlorder); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -67,10 +266,11 @@ func (c Controller) UpdateData() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Param fields query array true "set fields for adding value"
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Param value body models.InsertValue true "Insert value for adding"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [post]
@@ -114,23 +314,22 @@ func (c Controller) AddData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
-			utils.SendError(w, http.StatusUnauthorized, message)
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
 		//identify db_type
@@ -153,7 +352,7 @@ func (c Controller) AddData() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -164,7 +363,7 @@ func (c Controller) AddData() http.HandlerFunc {
 			sqlorder = fmt.Sprintf(`insert into %s.dbo.%s(%s) values (%s)`, information.DBName, tablename, fields, insertvalue.Value)
 		}
 		if err = repo.Exec(DB, sqlorder); err != nil {
-			message.Error = "Add value error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -178,7 +377,7 @@ func (c Controller) AddData() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
@@ -222,18 +421,18 @@ func (c Controller) GetAllData() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -248,7 +447,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -268,17 +467,17 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			} else if len(fields) == 0 {
 				sqlorder = fmt.Sprintf("select * from %s ", tablename)
 				rows, err = repo.Raw(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
 				for rows.Next() {
 					var table string
 					var datatype string
 					rows.Scan(&table, &datatype)
 					slicefields = append(slicefields, table)
 					coltype = append(coltype, datatype)
-				}
-				if err != nil {
-					message.Error = "scan information of table error"
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
 				}
 			}
 			if len(related) > 0 {
@@ -297,6 +496,18 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					}
 					j := strings.Join(slicefilter, " and ")
 					sqlorder += fmt.Sprintf("where %s ", j)
+				} else if strings.Contains(filter[0], " or ") {
+					var slicefilter []string
+					split := strings.Split(filter[0], " or ")
+					for i := 0; i < len(split); i++ {
+						s := split[i]
+						splitequal := strings.Split(s, "=")
+						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+						j := strings.Join(splitequal, "=")
+						slicefilter = append(slicefilter, j)
+					}
+					j := strings.Join(split, " or ")
+					sqlorder += fmt.Sprintf("where %s", j)
 				} else if strings.Contains(filter[0], "like") {
 					sqlorder += fmt.Sprintf("where %s ", filter[0])
 				} else {
@@ -305,6 +516,12 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					j := strings.Join(split, "=")
 					sqlorder += fmt.Sprintf("where %s ", j)
 				}
+			}
+			if len(group) > 0 {
+				sqlorder += fmt.Sprintf("group by %s ", group[0])
+			}
+			if len(order) > 0 {
+				sqlorder += fmt.Sprintf("order by %s ", order[0])
 			}
 			if len(limit) > 0 {
 				sqlorder += fmt.Sprintf("limit %s ", limit[0])
@@ -318,12 +535,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					return
 				}
 			}
-			if len(order) > 0 {
-				sqlorder += fmt.Sprintf("order by %s ", order[0])
-			}
-			if len(group) > 0 {
-				sqlorder += fmt.Sprintf("group by %s ", group[0])
-			}
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
 				information.DBUserName,
@@ -333,7 +544,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -365,10 +576,47 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					coltype = append(coltype, datatype)
 				}
 				if err != nil {
-					message.Error = "scan information of table error"
+					message.Error = err.Error()
 					utils.SendError(w, http.StatusInternalServerError, message)
 					return
 				}
+			}
+			if len(filter) > 0 {
+				if strings.Contains(filter[0], " and ") {
+					var slicefilter []string
+					split := strings.Split(filter[0], " and ")
+					for i := 0; i < len(split); i++ {
+						s := split[i]
+						splitequal := strings.Split(s, "=")
+						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+						j := strings.Join(splitequal, "=")
+						slicefilter = append(slicefilter, j)
+					}
+					j := strings.Join(slicefilter, " and ")
+					sqlorder += fmt.Sprintf("where %s ", j)
+				} else if strings.Contains(filter[0], " or ") {
+					var slicefilter []string
+					split := strings.Split(filter[0], " or ")
+					for i := 0; i < len(split); i++ {
+						s := split[i]
+						splitequal := strings.Split(s, "=")
+						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+						j := strings.Join(splitequal, "=")
+						slicefilter = append(slicefilter, j)
+					}
+					j := strings.Join(slicefilter, " or ")
+					sqlorder += fmt.Sprintf("where %s", j)
+				} else if strings.Contains(filter[0], "like") {
+					sqlorder += fmt.Sprintf("where %s ", filter[0])
+				} else {
+					split := strings.Split(filter[0], "=")
+					split[1] = fmt.Sprintf(`'%s'`, split[1])
+					j := strings.Join(split, "=")
+					sqlorder += fmt.Sprintf("where %s ", j)
+				}
+			}
+			if len(group) > 0 {
+				sqlorder += fmt.Sprintf("group by %s ", group[0])
 			}
 			if len(order) > 0 {
 				sqlorder += fmt.Sprintf("order by %s ", order[0])
@@ -382,13 +630,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					return
 				}
 			}
-			if len(group) > 0 {
-				sqlorder += fmt.Sprintf("group by %s ", group[0])
-			}
 		}
-		fmt.Println(slicefields)
-		fmt.Println(coltype)
-		fmt.Println(sqlorder)
 		var (
 			value     = make([]string, len(slicefields))
 			valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
@@ -398,7 +640,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 		}
 		rows, err = repo.Raw(DB, sqlorder)
 		if err != nil {
-			message.Error = "Get datas error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -411,7 +653,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				} else if strings.Contains(coltype[i], "int") {
 					data[slicefields[i]], err = strconv.Atoi(value[i])
 					if err != nil {
-						message.Error = "value convert error."
+						message.Error = err.Error()
 						utils.SendError(w, http.StatusInternalServerError, message)
 						return
 					}

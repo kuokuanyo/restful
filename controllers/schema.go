@@ -21,7 +21,7 @@ import (
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
@@ -48,18 +48,18 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 		}
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -83,7 +83,7 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -94,7 +94,7 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 			sql = fmt.Sprintf(`drop table %s.dbo.%s`, information.DBName, tablename)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "drop schema error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -107,9 +107,9 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 //@Tags Schema
 //@Accept json
 //@Produce json
-//@Param description body models.SchemaDescription true "Update the description of schema"
+//@Param condition body models.SchemaDescription true "Update the description of schema"
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
@@ -139,18 +139,18 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 		json.NewDecoder(r.Body).Decode(&description)
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -174,7 +174,7 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -185,7 +185,7 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			sql = fmt.Sprintf(`alter table %s.dbo.%s %s`, information.DBName, tablename, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "Update information of schema error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -198,9 +198,9 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 //@Tags Schema
 //@Accept json
 //@Produce json
-//@Param description body models.SchemaDescription true "description of table"
+//@Param condition body models.SchemaDescription true "description of table"
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
@@ -231,18 +231,18 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -266,7 +266,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -277,7 +277,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			sql = fmt.Sprintf(`create table %s.dbo.%s(%s)`, information.DBName, tablename, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
-			message.Error = "Add a new schema error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -291,7 +291,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "table name"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.FieldStructure "Successfully"
 //@Failure 500 {object} models.Error "Internal Server Error"
@@ -320,18 +320,18 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -346,7 +346,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -362,7 +362,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
 			if err != nil {
-				message.Error = "Database information error"
+				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
@@ -371,7 +371,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			rows, err = repo.Raw(DB, sql)
 		}
 		if err != nil {
-			message.Error = "Get informations of field error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -419,18 +419,18 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 		//get informations from db_alias
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
-			message.Error = "Connect mysql.user db error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias="%s"`, dbalias))
+		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
@@ -456,13 +456,13 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mssql", Source)
 		}
 		if err != nil {
-			message.Error = "Database information error"
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
 		rows, err := repo.Raw(DB, sql)
 		if err != nil {
-			message.Error = "Get all tables error."
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
