@@ -54,7 +54,7 @@ func (c Controller) DeleteData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
@@ -178,7 +178,7 @@ func (c Controller) UpdateData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
@@ -321,7 +321,7 @@ func (c Controller) AddData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -425,7 +425,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -456,7 +456,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				sqlorder = fmt.Sprintf("select %s from %s ", fields[0], tablename)
 				for i := range slicefields {
 					var datatype string
-					row = repo.RawOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
 					row.Scan(&datatype)
 					if datatype == "" {
 						coltype = append(coltype, "varchar")
@@ -466,7 +466,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				}
 			} else if len(fields) == 0 {
 				sqlorder = fmt.Sprintf("select * from %s ", tablename)
-				rows, err = repo.Raw(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
 				if err != nil {
 					message.Error = err.Error()
 					utils.SendError(w, http.StatusInternalServerError, message)
@@ -557,7 +557,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				sqlorder += fmt.Sprintf("%s from %s.dbo.%s ", fields[0], information.DBName, tablename)
 				for i := range slicefields {
 					var datatype string
-					row = repo.RawOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
 					row.Scan(&datatype)
 					if datatype == "" {
 						coltype = append(coltype, "varchar")
@@ -567,7 +567,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				}
 			} else if len(fields) == 0 {
 				sqlorder += fmt.Sprintf("* from %s.dbo.%s ", information.DBName, tablename)
-				rows, err = repo.Raw(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
 				for rows.Next() {
 					var table string
 					var datatype string
@@ -638,7 +638,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 		for i := 0; i < len(slicefields); i++ {
 			valuePtrs[i] = &value[i]
 		}
-		rows, err = repo.Raw(DB, sqlorder)
+		rows, err = repo.Rowmanydata(DB, sqlorder)
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)

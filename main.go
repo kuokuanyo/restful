@@ -43,6 +43,7 @@ func main() {
 	router.HandleFunc("/v1/_table/{db_alias}/{table_name}", controller.DeleteData()).Methods("DELETE")
 	router.HandleFunc("/v1/_table/{db_alias}/{table_name}/{id}", controller.GetDataByid()).Methods("GET")
 	router.HandleFunc("/v1/_table/{db_alias}/{table_name}/{id}", controller.UpdateDataByid()).Methods("PUT")
+	router.HandleFunc("/v1/_table/{db_alias}/{table_name}/{id}", controller.DeleteDataByid()).Methods("DELETE")
 	//server connect
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		panic(err)

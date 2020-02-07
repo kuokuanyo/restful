@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,7 +16,79 @@ import (
 	"restful/utils"
 )
 
+//DeleteDataByid :Delete one record by identifier.
+func (c Controller) DeleteDataByid() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		/*
+			var (
+				information model.DBInformation
+				message     model.Error
+				repo        repository.Repository
+				params      = mux.Vars(r)
+				tablename   = params["table_name"]
+				dbalias     = params["db_alias"]
+				id, _       = strconv.Atoi(params["id"])
+				password    = r.URL.Query()["db_password"][0]
+				fields      = r.URL.Query()["fields"]
+				//related = r.URL.Query()["related"]
+				sqlorder    string
+				slicefields []string
+				coltype     []string
+				data        = make(map[string]interface{})
+			)
+			if password == "" {
+				message.Error = "Required password."
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+			row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+				&information.DBPassword, &information.DBHost, &information.DBPort,
+				&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			if len(fields) > 0 {
+				slicefields = strings.Split(fields[0], ",")
+				for i := range slicefields {
+					var datatype string
+					row = repo.RawOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+					row.Scan(&datatype)
+					if datatype == "" {
+						coltype = append(coltype, "varchar")
+					} else {
+						coltype = append(coltype, datatype)
+					}
+				}
+				switch strings.ToLower(information.DBType)
+			}
+		*/
+	}
+}
+
 //UpdateDataByid :Replace the content of one record by identifier.
+//@Summary Replace the content of one record by identifier.
+//@Tags Table By ID(id is primary key)
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param id path int true "Identifier of the record to retrieve."
+//@Param db_password query string true "database engine password"
+//@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Param condition body models.Description true "condition of Updating"
+//@Success 200 {object} models.object "Successfully"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name}/{id} [put]
 func (c Controller) UpdateDataByid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
@@ -28,8 +101,13 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			id, _       = strconv.Atoi(params["id"])
 			//related = r.URL.Query()["related"]
-			password = r.URL.Query()["db_password"][0]
-			sqlorder string
+			password    = r.URL.Query()["db_password"][0]
+			fields      = r.URL.Query()["fields"]
+			sqlorder    string
+			slicefields []string
+			coltype     []string
+			data        = make(map[string]interface{})
+			rows        *sql.Rows
 		)
 		if password == "" {
 			message.Error = "Required password."
@@ -49,7 +127,7 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
 			&information.DBName, &information.MaxIdle, &information.MaxOpen)
@@ -88,13 +166,83 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		
+		if len(fields) > 0 {
+			slicefields = strings.Split(fields[0], ",")
+			for i := range slicefields {
+				var datatype string
+				switch strings.ToLower(information.DBType) {
+				case "mysql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+				case "mssql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+				}
+				row.Scan(&datatype)
+				if datatype == "" {
+					coltype = append(coltype, "varchar")
+				} else {
+					coltype = append(coltype, datatype)
+				}
+			}
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`select %s from %s.dbo.%s where id=%d`, fields[0], information.DBName, tablename, id)
+			}
+		} else {
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+			case "mssql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+			}
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			for rows.Next() {
+				var table string
+				var datatype string
+				rows.Scan(&table, &datatype)
+				slicefields = append(slicefields, table)
+				coltype = append(coltype, datatype)
+			}
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`select * from %s.dbo.%s where id=%d`, information.DBName, tablename, id)
+			}
+		}
+		var (
+			value     = make([]string, len(slicefields))
+			valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
+		)
+		for i := 0; i < len(slicefields); i++ {
+			valuePtrs[i] = &value[i]
+		}
+		row = repo.RowOneData(DB, sqlorder)
+		row.Scan(valuePtrs...)
+		for i := range slicefields {
+			if strings.Contains(coltype[i], "varchar") {
+				data[slicefields[i]] = value[i]
+			} else if strings.Contains(coltype[i], "int") {
+				data[slicefields[i]], err = strconv.Atoi(value[i])
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+			}
+		}
+		utils.SendSuccess(w, data)
 	}
 }
 
 //GetDataByid :Retrieve one record by identifier.
 //@Summary Retrieve one record by identifier.
-//@Tags Table By ID
+//@Tags Table By ID(id is primary key)
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
@@ -123,9 +271,10 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			slicefields []string
 			coltype     []string
 			data        = make(map[string]interface{})
+			rows        *sql.Rows
 		)
 		if password == "" {
-			message.Error = "Required password"
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -135,53 +284,18 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
-		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
-			message.Error = "Error password."
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if len(fields) > 0 {
-			slicefields = strings.Split(fields[0], ",")
-			for i := range slicefields {
-				var datatype string
-				row = repo.RawOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-				row.Scan(&datatype)
-				if datatype == "" {
-					coltype = append(coltype, "varchar")
-				} else {
-					coltype = append(coltype, datatype)
-				}
-			}
-			switch strings.ToLower(information.DBType) {
-			case "mysql":
-				sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
-			case "mssql":
-				sqlorder = fmt.Sprintf(`select %s from %s.dbo.%s where id=%d`, fields[0], information.DBName, tablename, id)
-			}
-		} else {
-			rows, err := repo.Raw(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
-			if err != nil {
-				message.Error = err.Error()
-				utils.SendError(w, http.StatusInternalServerError, message)
-				return
-			}
-			for rows.Next() {
-				var table string
-				var datatype string
-				rows.Scan(&table, &datatype)
-				slicefields = append(slicefields, table)
-				coltype = append(coltype, datatype)
-			}
-			switch strings.ToLower(information.DBType) {
-			case "mysql":
-				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
-			case "mssql":
-				sqlorder = fmt.Sprintf(`select * from %s.dbo.%s where id=%d`, information.DBName, tablename, id)
-			}
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
@@ -206,6 +320,62 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+		if len(fields) > 0 {
+			slicefields = strings.Split(fields[0], ",")
+			for i := range slicefields {
+				var datatype string
+				switch strings.ToLower(information.DBType) {
+				case "mysql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+				case "mssql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s'`, information.DBName, tablename, slicefields[i]))
+				}
+				row.Scan(&datatype)
+				if datatype == "" {
+					coltype = append(coltype, "varchar")
+				} else {
+					coltype = append(coltype, datatype)
+				}
+			}
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`use %s; select %s from %s where id=%d`, information.DBName, fields[0], tablename, id)
+			}
+		} else {
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s'`, information.DBName, tablename))
+			case "mssql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s'`, information.DBName, tablename))
+			}
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			for rows.Next() {
+				var table string
+				var datatype string
+				rows.Scan(&table, &datatype)
+				slicefields = append(slicefields, table)
+				coltype = append(coltype, datatype)
+			}
+			if err = rows.Err(); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`use %s; select * from %s where id=%d`, information.DBName, tablename, id)
+			}
+		}
+		fmt.Println(slicefields)
+		fmt.Println(coltype)
 		var (
 			value     = make([]string, len(slicefields))
 			valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
@@ -213,7 +383,9 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 		for i := 0; i < len(slicefields); i++ {
 			valuePtrs[i] = &value[i]
 		}
-		row = repo.RawOneData(DB, sqlorder)
+		fmt.Println(sqlorder)
+		DB.Raw(fmt.Sprintf(`use %s`, information.DBName))
+		row = repo.RowOneData(DB, sqlorder)
 		row.Scan(valuePtrs...)
 		for i := range slicefields {
 			if strings.Contains(coltype[i], "varchar") {

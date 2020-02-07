@@ -52,7 +52,7 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -143,7 +143,7 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -235,7 +235,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -324,7 +324,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -352,7 +352,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			}
 			sql := fmt.Sprintf("select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH,NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME  from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s'",
 				information.DBName, tablename)
-			rows, err = repo.Raw(DB, sql)
+			rows, err = repo.Rowmanydata(DB, sql)
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
 				information.DBUserName,
@@ -368,7 +368,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			}
 			sql := fmt.Sprintf(`select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH,NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME from %s.INFORMATION_SCHEMA.COLUMNS where TABLE_NAME='%s'`,
 				information.DBName, tablename)
-			rows, err = repo.Raw(DB, sql)
+			rows, err = repo.Rowmanydata(DB, sql)
 		}
 		if err != nil {
 			message.Error = err.Error()
@@ -423,7 +423,7 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
 		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
@@ -460,7 +460,7 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		rows, err := repo.Raw(DB, sql)
+		rows, err := repo.Rowmanydata(DB, sql)
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
