@@ -27,9 +27,9 @@ func (c Controller) DeleteDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			message model.Error
+			repo    repository.Repository
 			filter  = r.URL.Query()["filter"]
 			sql     string
-			repo    repository.Repository
 		)
 		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
 		if err != nil {
@@ -123,9 +123,9 @@ func (c Controller) UpdateDB() http.HandlerFunc {
 func (c Controller) GetAllDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
+			DB           *gorm.DB
 			message      model.Error
 			repo         repository.Repository
-			DB           *gorm.DB
 			err          error
 			sql          string
 			slicefields  []string
@@ -145,6 +145,7 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 			valuePtrs[i] = &value[i] //scan parameter need pointer
 		}
 		rows, err := repo.Rowmanydata(DB, sql)
+		defer rows.Close()
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -161,6 +162,11 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 				information[slicefields[i]] = value[i]
 			}
 			informations = append(informations, information)
+		}
+		if err = rows.Err(); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 		utils.SendSuccess(w, informations)
 	}

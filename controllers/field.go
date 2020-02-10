@@ -24,6 +24,7 @@ import (
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name}/_field/{field_name} [delete]
 func (c Controller) DropOneField() http.HandlerFunc {
@@ -31,19 +32,16 @@ func (c Controller) DropOneField() http.HandlerFunc {
 		var (
 			information model.DBInformation
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -55,9 +53,13 @@ func (c Controller) DropOneField() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -92,14 +94,14 @@ func (c Controller) DropOneField() http.HandlerFunc {
 		case "mysql":
 			sql = fmt.Sprintf(`ALTER TABLE %s DROP COLUMN %s;`, tablename, fieldname)
 		case "mssql":
-			sql = fmt.Sprintf(`ALTER TABLE %s.dbo.%s DROP COLUMN %s`, information.DBName, tablename, fieldname)
+			sql = fmt.Sprintf(`use %s; ALTER TABLE %s DROP COLUMN %s`, information.DBName, tablename, fieldname)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -114,6 +116,7 @@ func (c Controller) DropOneField() http.HandlerFunc {
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name}/_field/{field_name} [put]
 func (c Controller) UpdateOneField() http.HandlerFunc {
@@ -122,19 +125,16 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			information model.DBInformation
 			description model.Description
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -148,9 +148,13 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -185,14 +189,14 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 		case "mysql":
 			sql = fmt.Sprintf(`ALTER TABLE %s MODIFY COLUMN %s %s;`, tablename, fieldname, description.Condition)
 		case "mssql":
-			sql = fmt.Sprintf(`alter table %s.dbo.%s ALTER COLUMN %s %s`, information.DBName, tablename, fieldname, description.Condition)
+			sql = fmt.Sprintf(`use %s; alter table %s ALTER COLUMN %s %s`, information.DBName, tablename, fieldname, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -207,6 +211,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 //@Param field_name path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name}/_field/{field_name} [post]
 func (c Controller) AddOneField() http.HandlerFunc {
@@ -215,19 +220,16 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			information model.DBInformation
 			description model.Description
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -242,9 +244,13 @@ func (c Controller) AddOneField() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -279,14 +285,14 @@ func (c Controller) AddOneField() http.HandlerFunc {
 		case "mysql":
 			sql = fmt.Sprintf(`alter table %s add %s %s`, tablename, fieldname, description.Condition)
 		case "mssql":
-			sql = fmt.Sprintf(`alter table %s.dbo.%s add %s %s`, information.DBName, tablename, fieldname, description.Condition)
+			sql = fmt.Sprintf(`use %s; alter table %s add %s %s`, information.DBName, tablename, fieldname, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -300,6 +306,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 //@Param field path string true "field name"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.FieldStructure "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name}/_field/{field_name} [get]
 func (c Controller) GetOneField() http.HandlerFunc {
@@ -307,19 +314,16 @@ func (c Controller) GetOneField() http.HandlerFunc {
 		var (
 			information model.DBInformation
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			field       model.FieldStructure
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -332,9 +336,13 @@ func (c Controller) GetOneField() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -376,15 +384,14 @@ func (c Controller) GetOneField() http.HandlerFunc {
 				information.DBName, tablename, fieldname)
 			row = repo.RowOneData(DB, sql)
 		}
-		if err != nil {
+		//scan information
+		if err = row.Scan(&field.TableCatalog, &field.TableSchema, &field.TableName, &field.ColumnName, &field.OrdinalPosition,
+			&field.ColumnDefault, &field.IsNullable, &field.DataType, &field.CharacterMaximumLength, &field.CharacterOctetLength,
+			&field.NumericPrecision, &field.NumericScale, &field.DatetimePrecision, &field.CharacterSetName, &field.CollationName); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		//scan information
-		row.Scan(&field.TableCatalog, &field.TableSchema, &field.TableName, &field.ColumnName, &field.OrdinalPosition,
-			&field.ColumnDefault, &field.IsNullable, &field.DataType, &field.CharacterMaximumLength, &field.CharacterOctetLength,
-			&field.NumericPrecision, &field.NumericScale, &field.DatetimePrecision, &field.CharacterSetName, &field.CollationName)
 		utils.SendSuccess(w, field)
 	}
 }

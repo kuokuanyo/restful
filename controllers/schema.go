@@ -24,6 +24,7 @@ import (
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name} [delete]
 func (c Controller) DeleteSchema() http.HandlerFunc {
@@ -31,18 +32,15 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 		var (
 			information model.DBInformation
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -54,9 +52,13 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -91,14 +93,14 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 		case "mysql":
 			sql = fmt.Sprintf(`drop table %s`, tablename)
 		case "mssql":
-			sql = fmt.Sprintf(`drop table %s.dbo.%s`, information.DBName, tablename)
+			sql = fmt.Sprintf(`use %s; drop table %s`, information.DBName, tablename)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -112,6 +114,7 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name} [put]
 func (c Controller) UpdateSchema() http.HandlerFunc {
@@ -120,18 +123,15 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			information model.DBInformation
 			description model.Description
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -145,9 +145,13 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -182,14 +186,14 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 		case "mysql":
 			sql = fmt.Sprintf(`alter table %s %s`, tablename, description.Condition)
 		case "mssql":
-			sql = fmt.Sprintf(`alter table %s.dbo.%s %s`, information.DBName, tablename, description.Condition)
+			sql = fmt.Sprintf(`use %s; alter table %s %s`, information.DBName, tablename, description.Condition)
 		}
 		if err = repo.Exec(DB, sql); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -203,6 +207,7 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name} [post]
 func (c Controller) CreateSchema() http.HandlerFunc {
@@ -211,18 +216,15 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			information model.DBInformation
 			description model.Description
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -237,9 +239,13 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -281,7 +287,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully")
+		utils.SendSuccess(w, "Successfully.")
 	}
 }
 
@@ -294,6 +300,7 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.FieldStructure "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias}/{table_name} [get]
 func (c Controller) GetAllFields() http.HandlerFunc {
@@ -301,19 +308,16 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 		var (
 			information model.DBInformation
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			repo        repository.Repository
+			password    = r.URL.Query()["db_password"][0]
 			fields      []model.FieldStructure
 			rows        *sql.Rows
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -326,9 +330,13 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -370,6 +378,7 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 				information.DBName, tablename)
 			rows, err = repo.Rowmanydata(DB, sql)
 		}
+		defer rows.Close()
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -381,6 +390,11 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 				&field.ColumnDefault, &field.IsNullable, &field.DataType, &field.CharacterMaximumLength, &field.CharacterOctetLength,
 				&field.NumericPrecision, &field.NumericScale, &field.DatetimePrecision, &field.CharacterSetName, &field.CollationName)
 			fields = append(fields, field)
+		}
+		if err = rows.Err(); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 		utils.SendSuccess(w, fields)
 	}
@@ -394,25 +408,23 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 //@Param db_alias path string true "database engine alias"
 //@Param db_password query string true "database engine password"
 //@Success 200 {object} models.SchemaDefinition "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_schema/{db_alias} [get]
 func (c Controller) GetAllSchema() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			message     model.Error
-			params      = mux.Vars(r)
-			password    string
-			passwords   = r.URL.Query()["db_password"]
-			dbalias     = params["db_alias"]
 			information model.DBInformation
+			message     model.Error
 			repo        repository.Repository
+			params      = mux.Vars(r)
+			dbalias     = params["db_alias"]
+			password    = r.URL.Query()["db_password"][0]
 			schemas     []model.SchemaDefinition
 			sql         string
 		)
-		if len(passwords) > 0 {
-			password = passwords[0]
-		} else {
-			message.Error = "Require password"
+		if password == "" {
+			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
@@ -425,9 +437,13 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -461,6 +477,7 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 			return
 		}
 		rows, err := repo.Rowmanydata(DB, sql)
+		defer rows.Close()
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -470,6 +487,11 @@ func (c Controller) GetAllSchema() http.HandlerFunc {
 			var schema model.SchemaDefinition
 			rows.Scan(&schema.TableCatalog, &schema.TableSchema, &schema.TableName, &schema.TableType)
 			schemas = append(schemas, schema)
+		}
+		if err = rows.Err(); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 		utils.SendSuccess(w, schemas)
 	}

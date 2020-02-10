@@ -27,21 +27,22 @@ import (
 //@Param filter query array false "SQL-like filter to delete records."
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [delete]
 func (c Controller) DeleteData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			information model.DBInformation
-			repo        repository.Repository
-			sqlorder    string
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			password    = r.URL.Query()["db_password"][0]
 			//related = r.URL.Query()["related"]
-			filter = r.URL.Query()["filter"]
+			filter   = r.URL.Query()["filter"]
+			sqlorder string
 		)
 		if password == "" {
 			message.Error = "Required password."
@@ -55,12 +56,16 @@ func (c Controller) DeleteData() http.HandlerFunc {
 			return
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
-		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
 		switch strings.ToLower(information.DBType) {
@@ -86,7 +91,7 @@ func (c Controller) DeleteData() http.HandlerFunc {
 				information.DBPort,
 				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
-			sqlorder = fmt.Sprintf(`delete from %s.dbo.%s `, information.DBName, tablename)
+			sqlorder = fmt.Sprintf(`use %s; delete from %s `, information.DBName, tablename)
 		}
 		if len(filter) > 0 {
 			if strings.Contains(filter[0], " and ") {
@@ -143,6 +148,7 @@ func (c Controller) DeleteData() http.HandlerFunc {
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
 //@Param condition body models.Description true "condition of Updating"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [put]
 func (c Controller) UpdateData() http.HandlerFunc {
@@ -151,7 +157,6 @@ func (c Controller) UpdateData() http.HandlerFunc {
 			information model.DBInformation
 			description model.Description
 			repo        repository.Repository
-			sqlorder    string
 			message     model.Error
 			params      = mux.Vars(r)
 			tablename   = params["table_name"]
@@ -159,6 +164,7 @@ func (c Controller) UpdateData() http.HandlerFunc {
 			filter      = r.URL.Query()["filter"]
 			//related = r.URL.Query()["related"]
 			password = r.URL.Query()["db_password"][0]
+			sqlorder string
 		)
 		if password == "" {
 			message.Error = "Required password."
@@ -179,12 +185,16 @@ func (c Controller) UpdateData() http.HandlerFunc {
 			return
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
-		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
 		switch strings.ToLower(information.DBType) {
@@ -215,7 +225,7 @@ func (c Controller) UpdateData() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			sqlorder = fmt.Sprintf(`update %s.dbo.%s %s `, information.DBName, tablename, description.Condition)
+			sqlorder = fmt.Sprintf(`use %s; update %s %s `, information.DBName, tablename, description.Condition)
 		}
 		if len(filter) > 0 {
 			if strings.Contains(filter[0], " and ") {
@@ -272,6 +282,7 @@ func (c Controller) UpdateData() http.HandlerFunc {
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
 //@Param value body models.InsertValue true "Insert value for adding"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [post]
 func (c Controller) AddData() http.HandlerFunc {
@@ -279,15 +290,15 @@ func (c Controller) AddData() http.HandlerFunc {
 		var (
 			information model.DBInformation
 			insertvalue model.InsertValue
-			repo        repository.Repository
-			sqlorder    string
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
 			fields      = r.URL.Query()["fields"][0]
 			//related     = r.URL.Query()["related"]
 			password = r.URL.Query()["db_password"][0]
+			sqlorder string
 		)
 		if password == "" {
 			message.Error = "Require password."
@@ -323,13 +334,17 @@ func (c Controller) AddData() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
+			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
 		//identify db_type
@@ -360,7 +375,7 @@ func (c Controller) AddData() http.HandlerFunc {
 		case "mysql":
 			sqlorder = fmt.Sprintf(`insert into %s(%s) values (%s)`, tablename, fields, insertvalue.Value)
 		case "mssql":
-			sqlorder = fmt.Sprintf(`insert into %s.dbo.%s(%s) values (%s)`, information.DBName, tablename, fields, insertvalue.Value)
+			sqlorder = fmt.Sprintf(`use %s; insert into %s(%s) values (%s)`, information.DBName, tablename, fields, insertvalue.Value)
 		}
 		if err = repo.Exec(DB, sqlorder); err != nil {
 			message.Error = err.Error()
@@ -387,13 +402,16 @@ func (c Controller) AddData() http.HandlerFunc {
 //@Param order query string false "SQL-like order containing field and direction for filter results."
 //@Param group query string false "Comma-delimited list of the fields used for grouping of filter results."
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [get]
 func (c Controller) GetAllData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			rows        *sql.Rows
+			information model.DBInformation
 			message     model.Error
+			repo        repository.Repository
 			params      = mux.Vars(r)
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
@@ -406,8 +424,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			offset      = r.URL.Query()["offset"]
 			fetch       = r.URL.Query()["fetch"]
 			group       = r.URL.Query()["group"]
-			information model.DBInformation
-			repo        repository.Repository
 			sqlorder    string
 			slicefields []string
 			coltype     []string
@@ -427,9 +443,13 @@ func (c Controller) GetAllData() http.HandlerFunc {
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		//decrypt password
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
@@ -457,7 +477,11 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				for i := range slicefields {
 					var datatype string
 					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-					row.Scan(&datatype)
+					if err = row.Scan(&datatype); err != nil {
+						message.Error = err.Error()
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
+					}
 					if datatype == "" {
 						coltype = append(coltype, "varchar")
 					} else {
@@ -467,6 +491,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			} else if len(fields) == 0 {
 				sqlorder = fmt.Sprintf("select * from %s ", tablename)
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+				defer rows.Close()
 				if err != nil {
 					message.Error = err.Error()
 					utils.SendError(w, http.StatusInternalServerError, message)
@@ -479,9 +504,18 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					slicefields = append(slicefields, table)
 					coltype = append(coltype, datatype)
 				}
+				if err = rows.Err(); err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				if len(slicefields) == 0 && len(coltype) == 0 {
+					message.Error = "The table does not exist."
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
 			}
 			if len(related) > 0 {
-
 			}
 			if len(filter) > 0 {
 				if strings.Contains(filter[0], " and ") {
@@ -558,7 +592,11 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				for i := range slicefields {
 					var datatype string
 					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-					row.Scan(&datatype)
+					if err = row.Scan(&datatype); err != nil {
+						message.Error = err.Error()
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
+					}
 					if datatype == "" {
 						coltype = append(coltype, "varchar")
 					} else {
@@ -568,6 +606,12 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			} else if len(fields) == 0 {
 				sqlorder += fmt.Sprintf("* from %s.dbo.%s ", information.DBName, tablename)
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+				defer rows.Close()
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
 				for rows.Next() {
 					var table string
 					var datatype string
@@ -575,8 +619,13 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					slicefields = append(slicefields, table)
 					coltype = append(coltype, datatype)
 				}
-				if err != nil {
+				if err = rows.Err(); err != nil {
 					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				if len(slicefields) == 0 && len(coltype) == 0 {
+					message.Error = "The table does not exist."
 					utils.SendError(w, http.StatusInternalServerError, message)
 					return
 				}
@@ -639,6 +688,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			valuePtrs[i] = &value[i]
 		}
 		rows, err = repo.Rowmanydata(DB, sqlorder)
+		defer rows.Close()
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -660,6 +710,11 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				}
 			}
 			datas = append(datas, data)
+		}
+		if err = rows.Err(); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 		utils.SendSuccess(w, datas)
 	}

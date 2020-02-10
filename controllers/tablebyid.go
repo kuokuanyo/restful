@@ -17,60 +17,176 @@ import (
 )
 
 //DeleteDataByid :Delete one record by identifier.
+//@Summary Delete one record by identifier.
+//@Tags Table By ID(id is primary key)
+//@Accept json
+//@Produce json
+//@Param db_alias path string true "database engine alias"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param id path int true "Identifier of the record to retrieve."
+//@Param db_password query string true "database engine password"
+//@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
+//@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
+//@Failure 500 {object} models.Error "Internal Server Error"
+//@Router /v1/_table/{db_alias}/{table_name}/{id} [delete]
 func (c Controller) DeleteDataByid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		/*
-			var (
-				information model.DBInformation
-				message     model.Error
-				repo        repository.Repository
-				params      = mux.Vars(r)
-				tablename   = params["table_name"]
-				dbalias     = params["db_alias"]
-				id, _       = strconv.Atoi(params["id"])
-				password    = r.URL.Query()["db_password"][0]
-				fields      = r.URL.Query()["fields"]
-				//related = r.URL.Query()["related"]
-				sqlorder    string
-				slicefields []string
-				coltype     []string
-				data        = make(map[string]interface{})
-			)
-			if password == "" {
-				message.Error = "Required password."
-				utils.SendError(w, http.StatusInternalServerError, message)
-				return
+		var (
+			rows        *sql.Rows
+			information model.DBInformation
+			message     model.Error
+			repo        repository.Repository
+			params      = mux.Vars(r)
+			tablename   = params["table_name"]
+			dbalias     = params["db_alias"]
+			id, _       = strconv.Atoi(params["id"])
+			password    = r.URL.Query()["db_password"][0]
+			fields      = r.URL.Query()["fields"]
+			//related = r.URL.Query()["related"]
+			sqlorder       string
+			deletesqlorder string
+			slicefields    []string
+			coltype        []string
+			data           = make(map[string]interface{})
+		)
+		if password == "" {
+			message.Error = "Required password."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+		if err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+			&information.DBPassword, &information.DBHost, &information.DBPort,
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusUnauthorized, message)
+			return
+		}
+		switch strings.ToLower(information.DBType) {
+		case "mysql":
+			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mysql", Source)
+			deletesqlorder = fmt.Sprintf(`delete from %s where id=%d`, tablename, id)
+		case "mssql":
+			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
+				information.DBUserName,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb("mssql", Source)
+			deletesqlorder = fmt.Sprintf(`use %s; delete from %s where id=%d`, information.DBName, tablename, id)
+		}
+		if err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if len(fields) > 0 {
+			slicefields = strings.Split(fields[0], ",")
+			for i := range slicefields {
+				var datatype string
+				switch strings.ToLower(information.DBType) {
+				case "mysql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+					sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
+				case "mssql":
+					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+					sqlorder = fmt.Sprintf(`use %s; select %s from %s where id=%d`, information.DBName, fields[0], tablename, id)
+				}
+				if err = row.Scan(&datatype); err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				if datatype == "" {
+					coltype = append(coltype, "varchar")
+				} else {
+					coltype = append(coltype, datatype)
+				}
 			}
-			DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`use %s; select %s from %s where id=%d`, information.DBName, fields[0], tablename, id)
+			}
+		} else {
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
+			case "mssql":
+				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`use %s; select * from %s where id=%d`, information.DBName, tablename, id)
+			}
+			defer rows.Close()
 			if err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			row := repo.RawOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
-			row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
-				&information.DBPassword, &information.DBHost, &information.DBPort,
-				&information.DBName, &information.MaxIdle, &information.MaxOpen)
-			if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			for rows.Next() {
+				var table, datatype string
+				rows.Scan(&table, &datatype)
+				slicefields = append(slicefields, table)
+				coltype = append(coltype, datatype)
+			}
+			if err = rows.Err(); err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			if len(fields) > 0 {
-				slicefields = strings.Split(fields[0], ",")
-				for i := range slicefields {
-					var datatype string
-					row = repo.RawOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-					row.Scan(&datatype)
-					if datatype == "" {
-						coltype = append(coltype, "varchar")
-					} else {
-						coltype = append(coltype, datatype)
-					}
+		}
+		var (
+			value     = make([]string, len(slicefields))
+			valuePtrs = make([]interface{}, len(slicefields))
+		)
+		for i := 0; i < len(slicefields); i++ {
+			valuePtrs[i] = &value[i]
+		}
+		row = repo.RowOneData(DB, sqlorder)
+		if err = row.Scan(valuePtrs...); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		for i := range slicefields {
+			if strings.Contains(coltype[i], "varchar") {
+				data[slicefields[i]] = value[i]
+			} else if strings.Contains(coltype[i], "int") {
+				data[slicefields[i]], err = strconv.Atoi(value[i])
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
 				}
-				switch strings.ToLower(information.DBType)
 			}
-		*/
+		}
+		if err = repo.Exec(DB, deletesqlorder); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		utils.SendSuccess(w, data)
 	}
 }
 
@@ -87,6 +203,7 @@ func (c Controller) DeleteDataByid() http.HandlerFunc {
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
 //@Param condition body models.Description true "condition of Updating"
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name}/{id} [put]
 func (c Controller) UpdateDataByid() http.HandlerFunc {
@@ -128,12 +245,16 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			return
 		}
 		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
-		row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen)
-		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
 		switch strings.ToLower(information.DBType) {
@@ -154,7 +275,7 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 				information.DBPort,
 				information.DBName)
 			DB, err = repo.ConnectDb("mssql", Source)
-			sqlorder = fmt.Sprintf(`update %s.dbo.%s %s where id=%d `, information.DBName, tablename, description.Condition, id)
+			sqlorder = fmt.Sprintf(`use %s; update %s %s where id=%d `, information.DBName, tablename, description.Condition, id)
 		}
 		if err != nil {
 			message.Error = err.Error()
@@ -176,7 +297,11 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 				case "mssql":
 					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
 				}
-				row.Scan(&datatype)
+				if err = row.Scan(&datatype); err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
 				if datatype == "" {
 					coltype = append(coltype, "varchar")
 				} else {
@@ -187,15 +312,18 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			case "mysql":
 				sqlorder = fmt.Sprintf(`select %s from %s where id=%d`, fields[0], tablename, id)
 			case "mssql":
-				sqlorder = fmt.Sprintf(`select %s from %s.dbo.%s where id=%d`, fields[0], information.DBName, tablename, id)
+				sqlorder = fmt.Sprintf(`use %s; select %s from %s where id=%d`, information.DBName, fields[0], tablename, id)
 			}
 		} else {
 			switch strings.ToLower(information.DBType) {
 			case "mysql":
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
 			case "mssql":
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`use %s; select * from %s where id=%d`, information.DBName, tablename, id)
 			}
+			defer rows.Close()
 			if err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
@@ -208,11 +336,10 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 				slicefields = append(slicefields, table)
 				coltype = append(coltype, datatype)
 			}
-			switch strings.ToLower(information.DBType) {
-			case "mysql":
-				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
-			case "mssql":
-				sqlorder = fmt.Sprintf(`select * from %s.dbo.%s where id=%d`, information.DBName, tablename, id)
+			if err = rows.Err(); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
 			}
 		}
 		var (
@@ -223,7 +350,11 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			valuePtrs[i] = &value[i]
 		}
 		row = repo.RowOneData(DB, sqlorder)
-		row.Scan(valuePtrs...)
+		if err = row.Scan(valuePtrs...); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		for i := range slicefields {
 			if strings.Contains(coltype[i], "varchar") {
 				data[slicefields[i]] = value[i]
@@ -252,6 +383,7 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
 //@Success 200 {object} models.object "Successfully"
+//@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name}/{id} [get]
 func (c Controller) GetDataByid() http.HandlerFunc {
@@ -294,7 +426,7 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 		}
 		if err = bcrypt.CompareHashAndPassword([]byte(information.DBPassword), []byte(password)); err != nil {
 			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
+			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
 		switch strings.ToLower(information.DBType) {
@@ -330,7 +462,11 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 				case "mssql":
 					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s'`, information.DBName, tablename, slicefields[i]))
 				}
-				row.Scan(&datatype)
+				if err = row.Scan(&datatype); err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
 				if datatype == "" {
 					coltype = append(coltype, "varchar")
 				} else {
@@ -347,9 +483,12 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			switch strings.ToLower(information.DBType) {
 			case "mysql":
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s'`, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
 			case "mssql":
 				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s'`, information.DBName, tablename))
+				sqlorder = fmt.Sprintf(`use %s; select * from %s where id=%d`, information.DBName, tablename, id)
 			}
+			defer rows.Close()
 			if err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
@@ -367,15 +506,12 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			switch strings.ToLower(information.DBType) {
-			case "mysql":
-				sqlorder = fmt.Sprintf(`select * from %s where id=%d`, tablename, id)
-			case "mssql":
-				sqlorder = fmt.Sprintf(`use %s; select * from %s where id=%d`, information.DBName, tablename, id)
+			if len(slicefields) == 0 && len(coltype) == 0 {
+				message.Error = "The table does not exist."
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
 			}
 		}
-		fmt.Println(slicefields)
-		fmt.Println(coltype)
 		var (
 			value     = make([]string, len(slicefields))
 			valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
@@ -383,10 +519,12 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 		for i := 0; i < len(slicefields); i++ {
 			valuePtrs[i] = &value[i]
 		}
-		fmt.Println(sqlorder)
-		DB.Raw(fmt.Sprintf(`use %s`, information.DBName))
 		row = repo.RowOneData(DB, sqlorder)
-		row.Scan(valuePtrs...)
+		if err = row.Scan(valuePtrs...); err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		for i := range slicefields {
 			if strings.Contains(coltype[i], "varchar") {
 				data[slicefields[i]] = value[i]
