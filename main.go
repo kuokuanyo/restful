@@ -24,10 +24,11 @@ func main() {
 	//func (r *Router) HandleFunc(path string, f func(http.ResponseWriter, *http.Request)) *Route
 	//func (r *Router) Methods(methods ...string) *Route
 	//connect database
-	router.HandleFunc("/v1", controller.GetAllDB()).Methods("GET")
-	router.HandleFunc("/v1", controller.ConnectDB()).Methods("POST")
-	router.HandleFunc("/v1", controller.UpdateDB()).Methods("PUT")
-	router.HandleFunc("/v1", controller.DeleteDB()).Methods("DELETE")
+	router.HandleFunc("/v1", controller.Storing()).Methods("POST")
+	router.HandleFunc("/v1/_engine", controller.GetAllDB()).Methods("GET")
+	router.HandleFunc("/v1/_engine", controller.ConnectDB()).Methods("POST")
+	router.HandleFunc("/v1/_engine", controller.UpdateDB()).Methods("PUT")
+	router.HandleFunc("/v1/_engine", controller.DeleteDB()).Methods("DELETE")
 	router.HandleFunc("/v1/_schema/{db_alias}", controller.GetAllSchema()).Methods("GET")
 	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.GetAllFields()).Methods("GET")
 	router.HandleFunc("/v1/_schema/{db_alias}/{table_name}", controller.CreateSchema()).Methods("POST")

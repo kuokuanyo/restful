@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/jinzhu/gorm"
 
 	"restful/model"
 	"restful/repository"
@@ -30,7 +33,9 @@ import (
 func (c Controller) DropOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			information model.DBInformation
+			DB          *gorm.DB
+			row         *sql.Row
+			information model.Engine
 			message     model.Error
 			repo        repository.Repository
 			params      = mux.Vars(r)
@@ -39,23 +44,28 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			fieldname   = params["field_name"]
 			password    = r.URL.Query()["db_password"][0]
 			sql         string
+			err         error
 		)
+		if DBStoring == nil {
+			message.Error = "Please connect the database for storing informations of engine."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		if password == "" {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
-		if err != nil {
-			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
-			return
+		switch strings.ToLower(Storing.DBType) {
+		case "mysql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
+		case "mssql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
 		}
-		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -70,7 +80,7 @@ func (c Controller) DropOneField() http.HandlerFunc {
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -78,7 +88,7 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -122,7 +132,9 @@ func (c Controller) DropOneField() http.HandlerFunc {
 func (c Controller) UpdateOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			information model.DBInformation
+			DB          *gorm.DB
+			row         *sql.Row
+			information model.Engine
 			description model.Description
 			message     model.Error
 			repo        repository.Repository
@@ -132,7 +144,13 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			fieldname   = params["field_name"]
 			password    = r.URL.Query()["db_password"][0]
 			sql         string
+			err         error
 		)
+		if DBStoring == nil {
+			message.Error = "Please connect the database for storing informations of engine."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		if password == "" {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -140,17 +158,16 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 		}
 		//decode condition of create table
 		json.NewDecoder(r.Body).Decode(&description)
-		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
-		if err != nil {
-			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
-			return
+		switch strings.ToLower(Storing.DBType) {
+		case "mysql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
+		case "mssql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
 		}
-		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -165,7 +182,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -173,7 +190,7 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -217,7 +234,9 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 func (c Controller) AddOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			information model.DBInformation
+			DB          *gorm.DB
+			row         *sql.Row
+			information model.Engine
 			description model.Description
 			message     model.Error
 			repo        repository.Repository
@@ -227,7 +246,13 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			fieldname   = params["field_name"]
 			password    = r.URL.Query()["db_password"][0]
 			sql         string
+			err         error
 		)
+		if DBStoring == nil {
+			message.Error = "Please connect the database for storing informations of engine."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		if password == "" {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
@@ -235,18 +260,16 @@ func (c Controller) AddOneField() http.HandlerFunc {
 		}
 		//decode condition of create table
 		json.NewDecoder(r.Body).Decode(&description)
-		//get informations from db_alias
-		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
-		if err != nil {
-			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
-			return
+		switch strings.ToLower(Storing.DBType) {
+		case "mysql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
+		case "mssql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
 		}
-		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -261,7 +284,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -269,7 +292,7 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			DB, err = repo.ConnectDb("mysql", Source) //connect db
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -312,7 +335,9 @@ func (c Controller) AddOneField() http.HandlerFunc {
 func (c Controller) GetOneField() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			information model.DBInformation
+			DB          *gorm.DB
+			row         *sql.Row
+			information model.Engine
 			message     model.Error
 			repo        repository.Repository
 			params      = mux.Vars(r)
@@ -321,24 +346,28 @@ func (c Controller) GetOneField() http.HandlerFunc {
 			fieldname   = params["field_name"]
 			password    = r.URL.Query()["db_password"][0]
 			field       model.FieldStructure
+			err         error
 		)
+		if DBStoring == nil {
+			message.Error = "Please connect the database for storing informations of engine."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
 		if password == "" {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		//get informations from db_alias
-		DB, err := repo.ConnectDb("mysql", "kuokuanyo:asdf4440@tcp(127.0.0.1:3306)/user")
-		if err != nil {
-			message.Error = err.Error()
-			utils.SendError(w, http.StatusInternalServerError, message)
-			return
+		switch strings.ToLower(Storing.DBType) {
+		case "mysql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
+		case "mssql":
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
 		}
-		row := repo.RowOneData(DB, fmt.Sprintf(`select * from users where db_alias='%s'`, dbalias))
 		//scan information
-		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUserName,
+		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
 			&information.DBPassword, &information.DBHost, &information.DBPort,
-			&information.DBName, &information.MaxIdle, &information.MaxOpen); err != nil {
+			&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -353,7 +382,7 @@ func (c Controller) GetOneField() http.HandlerFunc {
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
@@ -369,7 +398,7 @@ func (c Controller) GetOneField() http.HandlerFunc {
 			row = repo.RowOneData(DB, sql)
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUserName,
+				information.DBUsername,
 				password,
 				information.DBHost,
 				information.DBPort,
