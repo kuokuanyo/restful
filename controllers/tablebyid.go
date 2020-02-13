@@ -46,9 +46,10 @@ func (c Controller) DeleteDataByid() http.HandlerFunc {
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
 			id, _       = strconv.Atoi(params["id"])
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
 			fields      = r.URL.Query()["fields"]
 			//related = r.URL.Query()["related"]
+			password       string
 			sqlorder       string
 			deletesqlorder string
 			slicefields    []string
@@ -61,7 +62,9 @@ func (c Controller) DeleteDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -229,8 +232,9 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			id, _       = strconv.Atoi(params["id"])
 			//related = r.URL.Query()["related"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
 			fields      = r.URL.Query()["fields"]
+			password    string
 			sqlorder    string
 			slicefields []string
 			coltype     []string
@@ -243,7 +247,9 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -416,9 +422,10 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
 			id, _       = strconv.Atoi(params["id"])
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
 			fields      = r.URL.Query()["fields"]
 			//related = r.URL.Query()["related"]
+			password    string
 			sqlorder    string
 			slicefields []string
 			coltype     []string
@@ -431,7 +438,9 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return

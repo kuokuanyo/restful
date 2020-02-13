@@ -39,7 +39,8 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -48,7 +49,9 @@ func (c Controller) DeleteSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -137,7 +140,8 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -146,7 +150,9 @@ func (c Controller) UpdateSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -237,7 +243,8 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -246,7 +253,9 @@ func (c Controller) CreateSchema() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -335,9 +344,10 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			params      = mux.Vars(r)
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
 			fields      []model.FieldStructure
 			rows        *sql.Rows
+			password    string
 			err         error
 		)
 		if DBStoring == nil {
@@ -345,7 +355,9 @@ func (c Controller) GetAllFields() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return

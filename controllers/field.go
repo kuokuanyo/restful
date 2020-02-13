@@ -42,7 +42,8 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -51,7 +52,9 @@ func (c Controller) DropOneField() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -142,7 +145,8 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -151,7 +155,9 @@ func (c Controller) UpdateOneField() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -244,7 +250,8 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			sql         string
 			err         error
 		)
@@ -253,7 +260,9 @@ func (c Controller) AddOneField() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
@@ -344,7 +353,8 @@ func (c Controller) GetOneField() http.HandlerFunc {
 			dbalias     = params["db_alias"]
 			tablename   = params["table_name"]
 			fieldname   = params["field_name"]
-			password    = r.URL.Query()["db_password"][0]
+			passwords   = r.URL.Query()["db_password"]
+			password    string
 			field       model.FieldStructure
 			err         error
 		)
@@ -353,7 +363,9 @@ func (c Controller) GetOneField() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if password == "" {
+		if len(passwords) > 0 {
+			password = passwords[0]
+		} else {
 			message.Error = "Required password."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
