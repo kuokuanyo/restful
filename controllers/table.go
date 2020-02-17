@@ -457,10 +457,9 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			order       = r.URL.Query()["order"]
 			limit       = r.URL.Query()["limit"]
 			offset      = r.URL.Query()["offset"]
-			fetch       = r.URL.Query()["fetch"]
 			group       = r.URL.Query()["group"]
 			password    string
-			related     string
+			//related     string
 			sqlorder    string
 			slicefields []string
 			coltype     []string
@@ -514,103 +513,95 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			if len(fields) > 0 {
-				slicefields = strings.Split(fields[0], ",")
-				sqlorder = fmt.Sprintf("select %s from %s.%s ", fields[0], information.DBName, tablename)
-				for i := range slicefields {
-					var datatype string
-					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-					if err = row.Scan(&datatype); err != nil {
+			if len(relateds) == 0 {
+				if len(fields) > 0 {
+					slicefields = strings.Split(fields[0], ",")
+					sqlorder = fmt.Sprintf("select %s from %s.%s ", fields[0], information.DBName, tablename)
+					for i := range slicefields {
+						var datatype string
+						row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+						if datatype == "" {
+							coltype = append(coltype, "varchar")
+						} else {
+							coltype = append(coltype, datatype)
+						}
+					}
+				} else if len(fields) == 0 {
+					rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+					defer rows.Close()
+					if err != nil {
 						message.Error = err.Error()
 						utils.SendError(w, http.StatusInternalServerError, message)
 						return
 					}
-					if datatype == "" {
-						coltype = append(coltype, "varchar")
-					} else {
+					for rows.Next() {
+						var table string
+						var datatype string
+						rows.Scan(&table, &datatype)
+						slicefields = append(slicefields, table)
 						coltype = append(coltype, datatype)
 					}
-				}
-			} else if len(fields) == 0 {
-				sqlorder = fmt.Sprintf("select * from %s.%s ", information.DBName, tablename)
-				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
-				defer rows.Close()
-				if err != nil {
-					message.Error = err.Error()
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-				for rows.Next() {
-					var table string
-					var datatype string
-					rows.Scan(&table, &datatype)
-					slicefields = append(slicefields, table)
-					coltype = append(coltype, datatype)
-				}
-				if err = rows.Err(); err != nil {
-					message.Error = err.Error()
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-				if len(slicefields) == 0 && len(coltype) == 0 {
-					message.Error = "The table does not exist."
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-			}
-			if len(relateds) > 0 {
-
-			}
-			if len(filter) > 0 {
-				if strings.Contains(filter[0], " and ") {
-					var slicefilter []string
-					split := strings.Split(filter[0], " and ")
-					for i := 0; i < len(split); i++ {
-						s := split[i]
-						splitequal := strings.Split(s, "=")
-						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-						j := strings.Join(splitequal, "=")
-						slicefilter = append(slicefilter, j)
+					if err = rows.Err(); err != nil {
+						message.Error = err.Error()
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
 					}
-					j := strings.Join(slicefilter, " and ")
-					sqlorder += fmt.Sprintf("where %s ", j)
-				} else if strings.Contains(filter[0], " or ") {
-					var slicefilter []string
-					split := strings.Split(filter[0], " or ")
-					for i := 0; i < len(split); i++ {
-						s := split[i]
-						splitequal := strings.Split(s, "=")
-						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-						j := strings.Join(splitequal, "=")
-						slicefilter = append(slicefilter, j)
+					if len(slicefields) == 0 && len(coltype) == 0 {
+						message.Error = "The table does not exist."
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
 					}
-					j := strings.Join(split, " or ")
-					sqlorder += fmt.Sprintf("where %s", j)
-				} else if strings.Contains(filter[0], "like") {
-					sqlorder += fmt.Sprintf("where %s ", filter[0])
-				} else {
-					split := strings.Split(filter[0], "=")
-					split[1] = fmt.Sprintf(`'%s'`, split[1])
-					j := strings.Join(split, "=")
-					sqlorder += fmt.Sprintf("where %s ", j)
+					sqlorder = fmt.Sprintf("select %s from %s.%s ", strings.Join(slicefields, ","), information.DBName, tablename)
 				}
-			}
-			if len(group) > 0 {
-				sqlorder += fmt.Sprintf("group by %s ", group[0])
-			}
-			if len(order) > 0 {
-				sqlorder += fmt.Sprintf("order by %s ", order[0])
-			}
-			if len(limit) > 0 {
-				sqlorder += fmt.Sprintf("limit %s ", limit[0])
-			}
-			if len(offset) > 0 {
+				if len(filter) > 0 {
+					if strings.Contains(filter[0], " and ") {
+						var slicefilter []string
+						split := strings.Split(filter[0], " and ")
+						for i := 0; i < len(split); i++ {
+							s := split[i]
+							splitequal := strings.Split(s, "=")
+							splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+							j := strings.Join(splitequal, "=")
+							slicefilter = append(slicefilter, j)
+						}
+						j := strings.Join(slicefilter, " and ")
+						sqlorder += fmt.Sprintf("where %s ", j)
+					} else if strings.Contains(filter[0], " or ") {
+						var slicefilter []string
+						split := strings.Split(filter[0], " or ")
+						for i := 0; i < len(split); i++ {
+							s := split[i]
+							splitequal := strings.Split(s, "=")
+							splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+							j := strings.Join(splitequal, "=")
+							slicefilter = append(slicefilter, j)
+						}
+						j := strings.Join(split, " or ")
+						sqlorder += fmt.Sprintf("where %s", j)
+					} else if strings.Contains(filter[0], "like") {
+						sqlorder += fmt.Sprintf("where %s ", filter[0])
+					} else {
+						split := strings.Split(filter[0], "=")
+						split[1] = fmt.Sprintf(`'%s'`, split[1])
+						j := strings.Join(split, "=")
+						sqlorder += fmt.Sprintf("where %s ", j)
+					}
+				}
+				if len(group) > 0 {
+					sqlorder += fmt.Sprintf("group by %s ", group[0])
+				}
+				if len(order) > 0 {
+					sqlorder += fmt.Sprintf("order by %s ", order[0])
+				}
 				if len(limit) > 0 {
+					sqlorder += fmt.Sprintf("limit %s ", limit[0])
+				} else {
+					sqlorder += fmt.Sprintf("limit 1000 ")
+				}
+				if len(offset) > 0 {
 					sqlorder += fmt.Sprintf("offset %s ", offset[0])
-				} else if len(limit) == 0 {
-					message.Error = "the offset parameter must have the parameter of limit"
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
+				} else {
+					sqlorder += fmt.Sprintf("offset 0 ")
 				}
 			}
 		case "mssql":
@@ -626,104 +617,205 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			sqlorder = "select "
-			if len(limit) > 0 {
-				sqlorder = fmt.Sprintf("select top %s ", limit[0])
-			}
-			if len(fields) > 0 {
-				slicefields = strings.Split(fields[0], ",")
-				sqlorder += fmt.Sprintf("%s from %s.dbo.%s ", fields[0], information.DBName, tablename)
-				for i := range slicefields {
-					var datatype string
-					row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
-					if err = row.Scan(&datatype); err != nil {
+			if len(relateds) == 0 {
+				if len(offset) == 0 {
+					if len(limit) > 0 {
+						sqlorder = fmt.Sprintf(`select top %s `, limit[0])
+					} else {
+						sqlorder = fmt.Sprintf(`select top 1000 `)
+					}
+					if len(fields) > 0 {
+						slicefields = strings.Split(fields[0], ",")
+						sqlorder += fmt.Sprintf("%s from %s.dbo.%s ", fields[0], information.DBName, tablename)
+						for i := range slicefields {
+							var datatype string
+							row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `, information.DBName, tablename, slicefields[i]))
+							if datatype == "" {
+								coltype = append(coltype, "varchar")
+							} else {
+								coltype = append(coltype, datatype)
+							}
+						}
+					} else if len(fields) == 0 {
+						rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
+						defer rows.Close()
+						if err != nil {
+							message.Error = err.Error()
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						for rows.Next() {
+							var table string
+							var datatype string
+							rows.Scan(&table, &datatype)
+							slicefields = append(slicefields, table)
+							coltype = append(coltype, datatype)
+						}
+						if err = rows.Err(); err != nil {
+							message.Error = err.Error()
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						if len(slicefields) == 0 && len(coltype) == 0 {
+							message.Error = "The table does not exist."
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						sqlorder += fmt.Sprintf("%s from %s.dbo.%s ", strings.Join(slicefields, ","), information.DBName, tablename)
+					}
+					if len(filter) > 0 {
+						if strings.Contains(filter[0], " and ") {
+							var slicefilter []string
+							split := strings.Split(filter[0], " and ")
+							for i := 0; i < len(split); i++ {
+								s := split[i]
+								splitequal := strings.Split(s, "=")
+								splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+								j := strings.Join(splitequal, "=")
+								slicefilter = append(slicefilter, j)
+							}
+							j := strings.Join(slicefilter, " and ")
+							sqlorder += fmt.Sprintf("where %s ", j)
+						} else if strings.Contains(filter[0], " or ") {
+							var slicefilter []string
+							split := strings.Split(filter[0], " or ")
+							for i := 0; i < len(split); i++ {
+								s := split[i]
+								splitequal := strings.Split(s, "=")
+								splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+								j := strings.Join(splitequal, "=")
+								slicefilter = append(slicefilter, j)
+							}
+							j := strings.Join(slicefilter, " or ")
+							sqlorder += fmt.Sprintf("where %s", j)
+						} else if strings.Contains(filter[0], "like") {
+							sqlorder += fmt.Sprintf("where %s ", filter[0])
+						} else {
+							split := strings.Split(filter[0], "=")
+							split[1] = fmt.Sprintf(`'%s'`, split[1])
+							j := strings.Join(split, "=")
+							sqlorder += fmt.Sprintf("where %s ", j)
+						}
+					}
+					if len(group) > 0 {
+						sqlorder += fmt.Sprintf("group by %s ", group[0])
+					}
+					if len(order) > 0 {
+						sqlorder += fmt.Sprintf("order by %s ", order[0])
+					} else {
+						sqlorder += fmt.Sprintf("order by (select 0)")
+					}
+				} else if len(offset) > 0 {
+					if len(fields) > 0 {
+						slicefields = strings.Split(fields[0], ",")
+						sqlorder = fmt.Sprintf("select * from(select %s, row_number() over ", fields[0])
+						for i := range slicefields {
+							var datatype string
+							row = repo.RowOneData(DB, fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s' `,
+								information.DBName, tablename, slicefields[i]))
+							if datatype == "" {
+								coltype = append(coltype, "varchar")
+							} else {
+								coltype = append(coltype, datatype)
+							}
+						}
+						slicefields = append(slicefields, "row_num")
+						coltype = append(coltype, "int")
+					} else if len(fields) == 0 {
+						rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `,
+							information.DBName, tablename))
+						defer rows.Close()
+						if err != nil {
+							message.Error = err.Error()
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						for rows.Next() {
+							var table string
+							var datatype string
+							rows.Scan(&table, &datatype)
+							slicefields = append(slicefields, table)
+							coltype = append(coltype, datatype)
+						}
+						if err = rows.Err(); err != nil {
+							message.Error = err.Error()
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						if len(slicefields) == 0 && len(coltype) == 0 {
+							message.Error = "The table does not exist."
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						sqlorder = fmt.Sprintf("select * from(select %s, row_number() over ", strings.Join(slicefields, ","))
+						slicefields = append(slicefields, "row_num")
+						coltype = append(coltype, "int")
+					}
+					if len(order) > 0 {
+						sqlorder += fmt.Sprintf("(order by %s) as row_num from %s.dbo.%s ", order[0], information.DBName, tablename)
+					} else {
+						sqlorder += fmt.Sprintf("(order by (select 0)) as row_num from %s.dbo.%s ", information.DBName, tablename)
+					}
+					if len(filter) > 0 {
+						if strings.Contains(filter[0], " and ") {
+							var slicefilter []string
+							split := strings.Split(filter[0], " and ")
+							for i := 0; i < len(split); i++ {
+								s := split[i]
+								splitequal := strings.Split(s, "=")
+								splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+								j := strings.Join(splitequal, "=")
+								slicefilter = append(slicefilter, j)
+							}
+							j := strings.Join(slicefilter, " and ")
+							sqlorder += fmt.Sprintf("where %s ", j)
+						} else if strings.Contains(filter[0], " or ") {
+							var slicefilter []string
+							split := strings.Split(filter[0], " or ")
+							for i := 0; i < len(split); i++ {
+								s := split[i]
+								splitequal := strings.Split(s, "=")
+								splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
+								j := strings.Join(splitequal, "=")
+								slicefilter = append(slicefilter, j)
+							}
+							j := strings.Join(slicefilter, " or ")
+							sqlorder += fmt.Sprintf("where %s", j)
+						} else if strings.Contains(filter[0], "like") {
+							sqlorder += fmt.Sprintf("where %s ", filter[0])
+						} else {
+							split := strings.Split(filter[0], "=")
+							split[1] = fmt.Sprintf(`'%s'`, split[1])
+							j := strings.Join(split, "=")
+							sqlorder += fmt.Sprintf("where %s ", j)
+						}
+					}
+					o, err := strconv.Atoi(offset[0])
+					if err != nil {
 						message.Error = err.Error()
 						utils.SendError(w, http.StatusInternalServerError, message)
 						return
 					}
-					if datatype == "" {
-						coltype = append(coltype, "varchar")
+					if len(group) > 0 {
+						sqlorder += fmt.Sprintf("group by %s) as temp_table where row_num between %d and ", group[0], o+1)
 					} else {
-						coltype = append(coltype, datatype)
+						sqlorder += fmt.Sprintf(") as temp_table where row_num between %d and ", o+1)
 					}
-				}
-			} else if len(fields) == 0 {
-				sqlorder += fmt.Sprintf("* from %s.dbo.%s ", information.DBName, tablename)
-				rows, err = repo.Rowmanydata(DB, fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' `, information.DBName, tablename))
-				defer rows.Close()
-				if err != nil {
-					message.Error = err.Error()
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-				for rows.Next() {
-					var table string
-					var datatype string
-					rows.Scan(&table, &datatype)
-					slicefields = append(slicefields, table)
-					coltype = append(coltype, datatype)
-				}
-				if err = rows.Err(); err != nil {
-					message.Error = err.Error()
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-				if len(slicefields) == 0 && len(coltype) == 0 {
-					message.Error = "The table does not exist."
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
-				}
-			}
-			if len(filter) > 0 {
-				if strings.Contains(filter[0], " and ") {
-					var slicefilter []string
-					split := strings.Split(filter[0], " and ")
-					for i := 0; i < len(split); i++ {
-						s := split[i]
-						splitequal := strings.Split(s, "=")
-						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-						j := strings.Join(splitequal, "=")
-						slicefilter = append(slicefilter, j)
+					if len(limit) > 0 {
+						l, err := strconv.Atoi(limit[0])
+						if err != nil {
+							message.Error = err.Error()
+							utils.SendError(w, http.StatusInternalServerError, message)
+							return
+						}
+						sqlorder += fmt.Sprintf("%d", o+l)
+					} else {
+						sqlorder += fmt.Sprintf("%d", o+1000)
 					}
-					j := strings.Join(slicefilter, " and ")
-					sqlorder += fmt.Sprintf("where %s ", j)
-				} else if strings.Contains(filter[0], " or ") {
-					var slicefilter []string
-					split := strings.Split(filter[0], " or ")
-					for i := 0; i < len(split); i++ {
-						s := split[i]
-						splitequal := strings.Split(s, "=")
-						splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-						j := strings.Join(splitequal, "=")
-						slicefilter = append(slicefilter, j)
-					}
-					j := strings.Join(slicefilter, " or ")
-					sqlorder += fmt.Sprintf("where %s", j)
-				} else if strings.Contains(filter[0], "like") {
-					sqlorder += fmt.Sprintf("where %s ", filter[0])
-				} else {
-					split := strings.Split(filter[0], "=")
-					split[1] = fmt.Sprintf(`'%s'`, split[1])
-					j := strings.Join(split, "=")
-					sqlorder += fmt.Sprintf("where %s ", j)
-				}
-			}
-			if len(group) > 0 {
-				sqlorder += fmt.Sprintf("group by %s ", group[0])
-			}
-			if len(order) > 0 {
-				sqlorder += fmt.Sprintf("order by %s ", order[0])
-			}
-			if len(offset) > 0 {
-				if len(order) > 0 && len(fetch) > 0 {
-					sqlorder += fmt.Sprintf("offset %s rows fetch next %s rows only ", offset[0], fetch[0])
-				} else if len(order) == 0 || len(fetch) == 0 {
-					message.Error = "the offset parameter must have the parameter of order and fetch."
-					utils.SendError(w, http.StatusInternalServerError, message)
-					return
 				}
 			}
 		}
+		fmt.Println(sqlorder)
 		var (
 			value     = make([]string, len(slicefields))
 			valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
