@@ -569,6 +569,8 @@ func (c Controller) GetDataByid() http.HandlerFunc {
 					utils.SendError(w, http.StatusInternalServerError, message)
 					return
 				}
+			} else {
+				data[slicefields[i]] = value[i]
 			}
 		}
 		utils.SendSuccess(w, data)
