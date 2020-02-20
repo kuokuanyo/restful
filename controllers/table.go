@@ -464,6 +464,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			slicefields []string
 			coltype     []string
 			err         error
+			datas       []map[string]interface{}
 		)
 
 		if DBStoring == nil {
@@ -841,7 +842,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			var (
 				value     = make([]string, len(slicefields))
 				valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
-				datas     []map[string]interface{}
 			)
 			for i := 0; i < len(slicefields); i++ {
 				valuePtrs[i] = &value[i]
@@ -888,8 +888,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			var fieldsbylocal, typesbylocal []string
 			var otherfields, otherfilters, othergroups, otherorders []string
 			var keys [][]string
-			var localdatas []map[string]interface{}
-			var allofdata [][]map[string]interface{}
 
 			for i := range sliceofrelated {
 				splitbyunderline := strings.Split(sliceofrelated[i], "_by_")
@@ -1095,20 +1093,20 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						data[fieldsbylocal[i]] = value[i]
 					}
 				}
-				localdatas = append(localdatas, data)
+				datas = append(datas, data)
 			}
 			if err = rows.Err(); err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			allofdata = append(allofdata, localdatas)
 
 			for i := range sliceofrelated {
+				var DBEngine *gorm.DB
 				var engine model.Engine
 				var join string
 				var joinfield, jointype, joinfilter, joingroup, joinorder []string
-				var joindatas []map[string]interface{}
+				var joindatas, results []map[string]interface{}
 				splitbydot := strings.Split(sliceofrelated[i], ".")
 				alias := splitbydot[0]
 				splitbypassword := strings.Split(splitbydot[1], "_password_")
@@ -1145,148 +1143,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						engine.DBHost,
 						engine.DBPort,
 						engine.DBName)
-					DBEngine, err := repo.ConnectDb("mysql", Source) //connect db
-					if err != nil {
-						message.Error = err.Error()
-						utils.SendError(w, http.StatusInternalServerError, message)
-						return
-					}
-
-					if len(fields) > 0 {
-						for m := range otherfields {
-							if strings.Split(otherfields[m], ".")[0] == table {
-								joinfield = append(joinfield, otherfields[m])
-							}
-						}
-						joinfield = Duplicate(joinfield, joinkey, table)
-						for m := range joinfield {
-							var datatype string
-							row = repo.RowOneData(DBEngine, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns
-							where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s'`,
-								engine.DBName, table, strings.Split(joinfield[m], ".")[1]))
-							row.Scan(&datatype)
-							if datatype == "" {
-								jointype = append(jointype, "varchar")
-							} else {
-								jointype = append(jointype, datatype)
-							}
-						}
-
-						join = fmt.Sprintf(`select %s from %s.%s `,
-							strings.Join(joinfield, ","), engine.DBName, table)
-					} else {
-						rows, err = repo.Rowmanydata(DBEngine,
-							fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns 
-					where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, engine.DBName, table))
-						defer rows.Close()
-						if err != nil {
-							message.Error = err.Error()
-							utils.SendError(w, http.StatusInternalServerError, message)
-							return
-						}
-						for rows.Next() {
-							var field, datatype string
-							rows.Scan(&field, &datatype)
-							joinfield = append(joinfield, table+"."+field)
-							jointype = append(jointype, datatype)
-						}
-						if err = rows.Err(); err != nil {
-							message.Error = err.Error()
-							utils.SendError(w, http.StatusInternalServerError, message)
-							return
-						}
-						join = fmt.Sprintf(`select %s from %s.%s `,
-							strings.Join(joinfield, ","), engine.DBName, table)
-					}
-
-					if len(otherfilters) > 0 {
-						if strings.Contains(filter[0], " and ") {
-							for m := range otherfilters {
-								if strings.Split(otherfilters[m], ".")[0] == table {
-									joinfilter = append(joinfilter, otherfilters[m])
-								}
-							}
-							j := strings.Join(joinfilter, " and ")
-							if len(j) > 0 {
-								join += fmt.Sprintf("where %s ", j)
-							}
-						} else if strings.Contains(filter[0], " or ") {
-							for m := range otherfilters {
-								if strings.Split(otherfilters[m], ".")[0] == table {
-									joinfilter = append(joinfilter, otherfilters[m])
-								}
-							}
-							j := strings.Join(joinfilter, " or ")
-							if len(j) > 0 {
-								join += fmt.Sprintf("where %s ", j)
-							}
-						} else if strings.Contains(filter[0], " like ") {
-							if strings.Split(otherfilters[0], ".")[0] == table {
-								join += fmt.Sprintf("where %s ", otherfilters[0])
-							}
-						} else {
-							if strings.Split(otherfilters[0], ".")[0] == table {
-								join += fmt.Sprintf("where %s ", otherfilters[0])
-							}
-						}
-					}
-
-					if len(othergroups) > 0 {
-						for m := range othergroups {
-							if strings.Split(othergroups[m], ".")[0] == table {
-								joingroup = append(joingroup, othergroups[m])
-							}
-						}
-						if len(joingroup) > 0 {
-							join += fmt.Sprintf("group by %s ", strings.Join(joingroup, ","))
-						}
-					}
-					if len(otherorders) > 0 {
-						for m := range otherorders {
-							if strings.Split(otherorders[m], ".")[0] == table {
-								joinorder = append(joinorder, otherorders[m])
-							}
-						}
-						if len(joinorder) > 0 {
-							join += fmt.Sprintf("order by %s ", strings.Join(joinorder, ","))
-						}
-					}
-
-					var (
-						joinvalue     = make([]string, len(joinfield))
-						joinvaluePtrs = make([]interface{}, len(joinfield))
-					)
-					for m := 0; m < len(joinfield); m++ {
-						joinvaluePtrs[m] = &joinvalue[m]
-					}
-					rows, err = repo.Rowmanydata(DBEngine, join)
-					defer rows.Close()
-					if err != nil {
-						message.Error = err.Error()
-						utils.SendError(w, http.StatusInternalServerError, message)
-						return
-					}
-					for rows.Next() {
-						var data = make(map[string]interface{})
-						rows.Scan(joinvaluePtrs...)
-						for m := range joinfield {
-							if strings.Contains(jointype[m], "varchar") {
-								data[joinfield[m]] = joinvalue[m]
-							} else if strings.Contains(jointype[m], "int") {
-								data[joinfield[m]], err = strconv.Atoi(joinvalue[m])
-								if err != nil {
-									message.Error = err.Error()
-									utils.SendError(w, http.StatusInternalServerError, message)
-									return
-								}
-							} else {
-								data[joinfield[m]] = joinvalue[m]
-							}
-						}
-						joindatas = append(joindatas, data)
-					}
-
-					allofdata = append(allofdata, joindatas)
+					DBEngine, err = repo.ConnectDb("mysql", Source) //connect db
 
 				case "mssql":
 					Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
@@ -1295,121 +1152,60 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						engine.DBHost,
 						engine.DBPort,
 						engine.DBName)
-					DBEngine, err := repo.ConnectDb("mssql", Source)
-					if err != nil {
-						message.Error = err.Error()
-						utils.SendError(w, http.StatusInternalServerError, message)
-					}
+					DBEngine, err = repo.ConnectDb("mssql", Source)
+				}
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+				}
 
-					if len(fields) > 0 {
-						for m := range otherfields {
-							if strings.Split(otherfields[m], ".")[0] == table {
-								joinfield = append(joinfield, otherfields[m])
-							}
+				if len(fields) > 0 {
+					for m := range otherfields {
+						if strings.Split(otherfields[m], ".")[0] == table {
+							joinfield = append(joinfield, otherfields[m])
 						}
-						joinfield = Duplicate(joinfield, joinkey, table)
-						for m := range joinfield {
-							var datatype string
+					}
+					joinfield = Duplicate(joinfield, joinkey, table)
+					for m := range joinfield {
+						var datatype string
+						switch strings.ToLower(engine.DBType) {
+						case "mysql":
+							row = repo.RowOneData(DBEngine, fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns
+							where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s'`,
+								engine.DBName, table, strings.Split(joinfield[m], ".")[1]))
+						case "mssql":
 							row = repo.RowOneData(DBEngine, fmt.Sprintf(`select Data_type from
 							%s.INFORMATION_SCHEMA.columns where TABLE_NAME='%s' and COLUMN_NAME='%s'`,
 								engine.DBName, table, strings.Split(joinfield[m], ".")[1]))
-							row.Scan(&datatype)
-							if datatype == "" {
-								jointype = append(jointype, "varchar")
-							} else {
-								jointype = append(jointype, datatype)
-							}
 						}
-
-						join = fmt.Sprintf("select %s from %s.dbo.%s ",
-							strings.Join(joinfield, ","), engine.DBName, table)
-					} else {
-						rows, err = repo.Rowmanydata(DBEngine,
-							fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns
-						where TABLE_NAME='%s' `, engine.DBName, table))
-						defer rows.Close()
-						if err != nil {
-							message.Error = err.Error()
-							utils.SendError(w, http.StatusInternalServerError, message)
-							return
-						}
-						for rows.Next() {
-							var field, datatype string
-							rows.Scan(&field, &datatype)
-							joinfield = append(joinfield, table+"."+field)
+						row.Scan(&datatype)
+						if datatype == "" {
+							jointype = append(jointype, "varchar")
+						} else {
 							jointype = append(jointype, datatype)
 						}
-						if err = rows.Err(); err != nil {
-							message.Error = err.Error()
-							utils.SendError(w, http.StatusInternalServerError, message)
-							return
-						}
+					}
 
+					switch strings.ToLower(engine.DBType) {
+					case "mysql":
+						join = fmt.Sprintf(`select %s from %s.%s `,
+							strings.Join(joinfield, ","), engine.DBName, table)
+					case "mssql":
 						join = fmt.Sprintf("select %s from %s.dbo.%s ",
 							strings.Join(joinfield, ","), engine.DBName, table)
 					}
 
-					if len(otherfilters) > 0 {
-						if strings.Contains(filter[0], " and ") {
-							for m := range otherfilters {
-								if strings.Split(otherfilters[m], ".")[0] == table {
-									joinfilter = append(joinfilter, otherfilters[m])
-								}
-							}
-							j := strings.Join(joinfilter, " and ")
-							if len(j) > 0 {
-								join += fmt.Sprintf("where %s ", j)
-							}
-						} else if strings.Contains(filter[0], " or ") {
-							for m := range otherfilters {
-								if strings.Split(otherfilters[m], ".")[0] == table {
-									joinfilter = append(joinfilter, otherfilters[m])
-								}
-							}
-							j := strings.Join(joinfilter, " or ")
-							if len(j) > 0 {
-								join += fmt.Sprintf("where %s ", j)
-							}
-						} else if strings.Contains(filter[0], " like ") {
-							if strings.Split(otherfilters[0], ".")[0] == table {
-								join += fmt.Sprintf("where %s ", otherfilters[0])
-							}
-						} else {
-							if strings.Split(otherfilters[0], ".")[0] == table {
-								join += fmt.Sprintf("where %s ", otherfilters[0])
-							}
-						}
+				} else {
+					switch strings.ToLower(engine.DBType) {
+					case "mysql":
+						rows, err = repo.Rowmanydata(DBEngine,
+							fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns 
+						where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, engine.DBName, table))
+					case "mssql":
+						rows, err = repo.Rowmanydata(DBEngine,
+							fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns
+							where TABLE_NAME='%s' `, engine.DBName, table))
 					}
-
-					if len(othergroups) > 0 {
-						for m := range othergroups {
-							if strings.Split(othergroups[m], ".")[0] == table {
-								joingroup = append(joingroup, othergroups[m])
-							}
-						}
-						if len(joingroup) > 0 {
-							join += fmt.Sprintf("group by %s ", strings.Join(joingroup, ","))
-						}
-					}
-					if len(otherorders) > 0 {
-						for m := range otherorders {
-							if strings.Split(otherorders[m], ".")[0] == table {
-								joinorder = append(joinorder, otherorders[m])
-							}
-						}
-						if len(joinorder) > 0 {
-							join += fmt.Sprintf("order by %s ", strings.Join(joinorder, ","))
-						}
-					}
-
-					var (
-						joinvalue     = make([]string, len(joinfield))
-						joinvaluePtrs = make([]interface{}, len(joinfield))
-					)
-					for m := 0; m < len(joinfield); m++ {
-						joinvaluePtrs[m] = &joinvalue[m]
-					}
-					rows, err = repo.Rowmanydata(DBEngine, join)
 					defer rows.Close()
 					if err != nil {
 						message.Error = err.Error()
@@ -1417,28 +1213,158 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						return
 					}
 					for rows.Next() {
-						var data = make(map[string]interface{})
-						rows.Scan(joinvaluePtrs...)
-						for m := range joinfield {
-							if strings.Contains(jointype[m], "varchar") {
-								data[joinfield[m]] = joinvalue[m]
-							} else if strings.Contains(jointype[m], "int") {
-								data[joinfield[m]], err = strconv.Atoi(joinvalue[m])
-								if err != nil {
-									message.Error = err.Error()
-									utils.SendError(w, http.StatusInternalServerError, message)
-									return
-								}
-							} else {
-								data[joinfield[m]] = joinvalue[m]
+						var field, datatype string
+						rows.Scan(&field, &datatype)
+						joinfield = append(joinfield, table+"."+field)
+						jointype = append(jointype, datatype)
+					}
+					if err = rows.Err(); err != nil {
+						message.Error = err.Error()
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
+					}
+
+					switch strings.ToLower(engine.DBType) {
+					case "mysql":
+						join = fmt.Sprintf(`select %s from %s.%s `,
+							strings.Join(joinfield, ","), engine.DBName, table)
+					case "mssql":
+						join = fmt.Sprintf("select %s from %s.dbo.%s ",
+							strings.Join(joinfield, ","), engine.DBName, table)
+					}
+				}
+
+				if len(otherfilters) > 0 {
+					if strings.Contains(filter[0], " and ") {
+						for m := range otherfilters {
+							if strings.Split(otherfilters[m], ".")[0] == table {
+								joinfilter = append(joinfilter, otherfilters[m])
 							}
 						}
-						joindatas = append(joindatas, data)
+						j := strings.Join(joinfilter, " and ")
+						if len(j) > 0 {
+							join += fmt.Sprintf("where %s ", j)
+						}
+					} else if strings.Contains(filter[0], " or ") {
+						for m := range otherfilters {
+							if strings.Split(otherfilters[m], ".")[0] == table {
+								joinfilter = append(joinfilter, otherfilters[m])
+							}
+						}
+						j := strings.Join(joinfilter, " or ")
+						if len(j) > 0 {
+							join += fmt.Sprintf("where %s ", j)
+						}
+					} else if strings.Contains(filter[0], " like ") {
+						if strings.Split(otherfilters[0], ".")[0] == table {
+							join += fmt.Sprintf("where %s ", otherfilters[0])
+						}
+					} else {
+						if strings.Split(otherfilters[0], ".")[0] == table {
+							join += fmt.Sprintf("where %s ", otherfilters[0])
+						}
 					}
-					allofdata = append(allofdata, joindatas)
+				}
+
+				if len(othergroups) > 0 {
+					for m := range othergroups {
+						if strings.Split(othergroups[m], ".")[0] == table {
+							joingroup = append(joingroup, othergroups[m])
+						}
+					}
+					if len(joingroup) > 0 {
+						join += fmt.Sprintf("group by %s ", strings.Join(joingroup, ","))
+					}
+				}
+				if len(otherorders) > 0 {
+					for m := range otherorders {
+						if strings.Split(otherorders[m], ".")[0] == table {
+							joinorder = append(joinorder, otherorders[m])
+						}
+					}
+					if len(joinorder) > 0 {
+						join += fmt.Sprintf("order by %s ", strings.Join(joinorder, ","))
+					}
+				}
+
+				var (
+					joinvalue     = make([]string, len(joinfield))
+					joinvaluePtrs = make([]interface{}, len(joinfield))
+				)
+				for m := 0; m < len(joinfield); m++ {
+					joinvaluePtrs[m] = &joinvalue[m]
+				}
+				rows, err = repo.Rowmanydata(DBEngine, join)
+				defer rows.Close()
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				for rows.Next() {
+					var data = make(map[string]interface{})
+					rows.Scan(joinvaluePtrs...)
+					for m := range joinfield {
+						if strings.Contains(jointype[m], "varchar") {
+							data[joinfield[m]] = joinvalue[m]
+						} else if strings.Contains(jointype[m], "int") {
+							data[joinfield[m]], err = strconv.Atoi(joinvalue[m])
+							if err != nil {
+								message.Error = err.Error()
+								utils.SendError(w, http.StatusInternalServerError, message)
+								return
+							}
+						} else {
+							data[joinfield[m]] = joinvalue[m]
+						}
+					}
+					joindatas = append(joindatas, data)
+				}
+
+				for _, data := range datas {
+					for _, join := range joindatas {
+						if len(joinkey) == 1 {
+							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] {
+								result := make(map[string]interface{})
+								for datakey, datavalue := range data {
+									for joinkey, joinvalue := range join {
+										result[datakey] = datavalue
+										result[joinkey] = joinvalue
+									}
+								}
+								results = append(results, result)
+							}
+						} else if len(joinkey) == 2 {
+							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
+								data[tablename+"."+joinkey[1]] == join[table+"."+joinkey[1]] {
+								result := make(map[string]interface{})
+								for datakey, datavalue := range data {
+									for joinkey, joinvalue := range join {
+										result[datakey] = datavalue
+										result[joinkey] = joinvalue
+									}
+								}
+								results = append(results, result)
+							}
+						} else if len(joinkey) == 3 {
+							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
+								data[tablename+"."+joinkey[1]] == join[table+"."+joinkey[1]] &&
+								data[tablename+"."+joinkey[2]] == join[table+"."+joinkey[2]] {
+								result := make(map[string]interface{})
+								for datakey, datavalue := range data {
+									for joinkey, joinvalue := range join {
+										result[datakey] = datavalue
+										result[joinkey] = joinvalue
+									}
+								}
+								results = append(results, result)
+							}
+						}
+						datas = results
+					}
 				}
 			}
-			utils.SendSuccess(w, allofdata)
+			utils.SendSuccess(w, datas)
 		}
 	}
 }
