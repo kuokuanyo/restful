@@ -427,13 +427,13 @@ func (c Controller) AddData() http.HandlerFunc {
 //@Param db_alias path string true "database engine alias"
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
-//@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties."
-//@Param related query array false "Comma-delimited list of related names to retrieve for each resource."
-//@Param filter query string false "SQL-like filter to limit the records to retrieve."
+//@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
+//@Param filter query string false "SQL-like filter to limit the records to retrieve. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param limit query integer false "Set to limit the filter results."
 //@Param offset query integer false "Set to offset the filter results to a particular record count."
-//@Param order query string false "SQL-like order containing field and direction for filter results."
-//@Param group query string false "Comma-delimited list of the fields used for grouping of filter results."
+//@Param order query string false "SQL-like order containing field and direction for filter results. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
+//@Param group query string false "Comma-delimited list of the fields used for grouping of filter results. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Success 200 {object} models.object "Successfully"
 //@Failure 401 {object} models.Error "Unauthorized"
 //@Failure 500 {object} models.Error "Internal Server Error"
@@ -878,8 +878,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-
-			utils.SendSuccess(w, datas)
 		}
 
 		if len(relateds) > 0 {
@@ -888,6 +886,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			var fieldsbylocal, typesbylocal []string
 			var otherfields, otherfilters, othergroups, otherorders []string
 			var keys [][]string
+			var firstdatas []map[string]interface{}
 
 			for i := range sliceofrelated {
 				splitbyunderline := strings.Split(sliceofrelated[i], "_by_")
@@ -1093,7 +1092,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						data[fieldsbylocal[i]] = value[i]
 					}
 				}
-				datas = append(datas, data)
+				firstdatas = append(firstdatas, data)
 			}
 			if err = rows.Err(); err != nil {
 				message.Error = err.Error()
@@ -1106,7 +1105,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				var engine model.Engine
 				var join string
 				var joinfield, jointype, joinfilter, joingroup, joinorder []string
-				var joindatas, results []map[string]interface{}
+				var joindatas []map[string]interface{}
 				splitbydot := strings.Split(sliceofrelated[i], ".")
 				alias := splitbydot[0]
 				splitbypassword := strings.Split(splitbydot[1], "_password_")
@@ -1321,7 +1320,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					joindatas = append(joindatas, data)
 				}
 
-				for _, data := range datas {
+				for _, data := range firstdatas {
 					for _, join := range joindatas {
 						if len(joinkey) == 1 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] {
@@ -1332,7 +1331,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 										result[joinkey] = joinvalue
 									}
 								}
-								results = append(results, result)
+								datas = append(datas, result)
 							}
 						} else if len(joinkey) == 2 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
@@ -1344,7 +1343,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 										result[joinkey] = joinvalue
 									}
 								}
-								results = append(results, result)
+								datas = append(datas, result)
 							}
 						} else if len(joinkey) == 3 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
@@ -1353,19 +1352,22 @@ func (c Controller) GetAllData() http.HandlerFunc {
 								result := make(map[string]interface{})
 								for datakey, datavalue := range data {
 									for joinkey, joinvalue := range join {
-										result[datakey] = datavalue
-										result[joinkey] = joinvalue
+										if len(fields) > 0 {
+											result[datakey] = datavalue
+											result[joinkey] = joinvalue
+										}
+
 									}
 								}
-								results = append(results, result)
+								datas = append(datas, result)
 							}
 						}
-						datas = results
 					}
 				}
+
 			}
-			utils.SendSuccess(w, datas)
 		}
+		utils.SendSuccess(w, datas)
 	}
 }
 
