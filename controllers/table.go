@@ -312,6 +312,7 @@ func (c Controller) AddData() http.HandlerFunc {
 		var (
 			DB          *gorm.DB
 			row         *sql.Row
+			rows        *sql.Rows
 			information model.Engine
 			insertvalue model.InsertValue
 			message     model.Error
@@ -320,18 +321,21 @@ func (c Controller) AddData() http.HandlerFunc {
 			tablename   = params["table_name"]
 			dbalias     = params["db_alias"]
 			fields      = r.URL.Query()["fields"]
-			field       string
 			//related     = r.URL.Query()["related"]
-			passwords = r.URL.Query()["db_password"]
-			password  string
-			sqlorder  string
-			err       error
+			passwords   = r.URL.Query()["db_password"]
+			slicefields []string
+			coltype     []string
+			password    string
+			sqlorder    string
+			err         error
 		)
+
 		if DBStoring == nil {
 			message.Error = "Please connect the database for storing informations of engine."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		if len(passwords) > 0 {
 			password = passwords[0]
 		} else {
@@ -339,32 +343,26 @@ func (c Controller) AddData() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		//decode
 		json.NewDecoder(r.Body).Decode(&insertvalue)
-		if insertvalue.Value == "" {
-			message.Error = "Required value for adding"
+		if insertvalue.Field == "" && insertvalue.Value == "" {
+			message.Error = "Required set field and value for adding"
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if len(fields) > 0 {
-			field = fields[0]
-			splitvalue := strings.Split(insertvalue.Value, ",")
-			splitfield := strings.Split(field, ",")
-			if len(splitvalue) != len(splitfield) {
-				message.Error = "Column count doesn't match value."
-				utils.SendError(w, http.StatusInternalServerError, message)
-				return
-			}
-		} else {
-			message.Error = "Must set fields for adding value"
+		if len(strings.Split(insertvalue.Field, ",")) != len(strings.Split(insertvalue.Value, ",")) {
+			message.Error = "Column count doesn't match value."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		switch strings.ToLower(Storing.DBType) {
 		case "mysql":
 			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
 		case "mssql":
-			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from %s.dbo.engines where db_alias='%s'`,
+				Storing.DBName, dbalias))
 		}
 		//scan information
 		if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
@@ -380,6 +378,7 @@ func (c Controller) AddData() http.HandlerFunc {
 			utils.SendError(w, http.StatusUnauthorized, message)
 			return
 		}
+
 		//identify db_type
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
@@ -389,7 +388,7 @@ func (c Controller) AddData() http.HandlerFunc {
 				information.DBHost,
 				information.DBPort,
 				information.DBName)
-			DB, err = repo.ConnectDb("mysql", Source) //connect db
+			DB, err = repo.ConnectDb(information.DBType, Source) //connect db
 		case "mssql":
 			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
 				information.DBUsername,
@@ -397,24 +396,121 @@ func (c Controller) AddData() http.HandlerFunc {
 				information.DBHost,
 				information.DBPort,
 				information.DBName)
-			DB, err = repo.ConnectDb("mssql", Source)
+			DB, err = repo.ConnectDb(information.DBType, Source)
 		}
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
+		value := strings.Split(insertvalue.Value, ",")
+		for i := range value {
+			value[i] = fmt.Sprintf(`'%s'`, value[i])
+		}
+
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
-			sqlorder = fmt.Sprintf(`insert into %s(%s) values (%s)`, tablename, field, insertvalue.Value)
+			sqlorder = fmt.Sprintf(`insert into %s(%s) values (%s)`, tablename, insertvalue.Field, strings.Join(value, ","))
 		case "mssql":
-			sqlorder = fmt.Sprintf(`use %s; insert into %s(%s) values (%s)`, information.DBName, tablename, field, insertvalue.Value)
+			sqlorder = fmt.Sprintf(`insert into %s.dbo.%s(%s) values (%s)`, information.DBName, tablename, insertvalue.Field, strings.Join(value, ","))
 		}
+
 		if err = repo.Exec(DB, sqlorder); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
+		if len(fields) > 0 {
+			slicefields = strings.Split(fields[0], ",")
+			for i := range slicefields {
+				var datatype string
+				switch strings.ToLower(information.DBType) {
+				case "mysql":
+					row = repo.RowOneData(DB,
+						fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where
+						TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s'`,
+							information.DBName, tablename, slicefields[i]))
+				case "mssql":
+					row = repo.RowOneData(DB,
+						fmt.Sprintf(`select Data_Type from %s.INFORMATION_SCHEMA.columns where
+						TABLE_NAME='%s' and COLUMN_NAME='%s'`,
+
+
+						
+							information.DBName, tablename, slicefields[i]))
+				}
+				row.Scan(&datatype)
+				if datatype == "" {
+					coltype = append(coltype, "varchar")
+				} else {
+					coltype = append(coltype, datatype)
+				}
+			}
+
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf("select %s from %s where ", fields[0], tablename)
+			case "mssql":
+				sqlorder = fmt.Sprintf("select %s from %s.dbo.%s where ", fields[0], information.DBName, tablename)
+			}
+		} else {
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				rows, err = repo.Rowmanydata(DB,
+					fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns 
+				where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `,
+						information.DBName, tablename))
+			case "mssql":
+				rows, err = repo.Rowmanydata(DB,
+					fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns 
+				where TABLE_NAME='%s' `,
+						information.DBName, tablename))
+			}
+			defer rows.Close()
+			if err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			for rows.Next() {
+				var table, datatype string
+				rows.Scan(&table, &datatype)
+				slicefields = append(slicefields, table)
+				coltype = append(coltype, datatype)
+			}
+			if err = rows.Err(); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+			if len(slicefields) == 0 && len(coltype) == 0 {
+				message.Error = "The table does not exist."
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select %s from %s where `,
+					strings.Join(slicefields, ","), tablename)
+			case "mssql":
+				sqlorder = fmt.Sprintf(`select %s from %s.dbo.%s where `,
+					strings.Join(slicefields, ","), information.DBName, tablename)
+			}
+		}
+
+		field := strings.Split(insertvalue.Field, ",")
+		for i := 0; i < len(field); i++ {
+			if i == len(field)-1 {
+				sqlorder += fmt.Sprintf(`%s=%s`, field[i], value[i])
+			} else {
+				sqlorder += fmt.Sprintf(`%s=%s and `, field[i], value[i])
+			}
+		}
+
+		fmt.Println(sqlorder)
 		utils.SendSuccess(w, "Successfully.")
 	}
 }
@@ -485,7 +581,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 		case "mysql":
 			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from engines where db_alias='%s'`, dbalias))
 		case "mssql":
-			row = repo.RowOneData(DBStoring, fmt.Sprintf(`use %s; select * from engines where db_alias='%s'`, Storing.DBName, dbalias))
+			row = repo.RowOneData(DBStoring, fmt.Sprintf(`select * from %s.dbo.engines where db_alias='%s'`, Storing.DBName, dbalias))
 		}
 
 		//scan information
@@ -512,21 +608,34 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				information.DBHost,
 				information.DBPort,
 				information.DBName)
-			DB, err = repo.ConnectDb("mysql", Source) //connect db
-			if err != nil {
-				message.Error = err.Error()
-				utils.SendError(w, http.StatusInternalServerError, message)
-				return
-			}
+			DB, err = repo.ConnectDb(information.DBType, Source) //connect db
 
-			if len(relateds) == 0 {
+		case "mssql":
+			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
+				information.DBUsername,
+				password,
+				information.DBHost,
+				information.DBPort,
+				information.DBName)
+			DB, err = repo.ConnectDb(information.DBType, Source)
+		}
+		if err != nil {
+			message.Error = err.Error()
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
+		}
+
+		if len(relateds) == 0 {
+			switch strings.ToLower(information.DBType) {
+			case "mysql":
 				if len(fields) > 0 {
 					slicefields = strings.Split(fields[0], ",")
 					sqlorder = fmt.Sprintf("select %s from %s.%s ", fields[0], information.DBName, tablename)
 					for i := range slicefields {
 						var datatype string
 						row = repo.RowOneData(DB,
-							fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' and TABLE_NAME='%s' and COLUMN_NAME='%s' `,
+							fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' 
+							and TABLE_NAME='%s' and COLUMN_NAME='%s' `,
 								information.DBName, tablename, slicefields[i]))
 						row.Scan(&datatype)
 						if datatype == "" {
@@ -538,7 +647,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				} else if len(fields) == 0 {
 					rows, err = repo.Rowmanydata(DB,
 						fmt.Sprintf(`select COLUMN_NAME, Data_Type from INFORMATION_SCHEMA.columns 
-						 where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
+							 where TABLE_SCHEMA='%s' and TABLE_NAME='%s' `, information.DBName, tablename))
 					defer rows.Close()
 					if err != nil {
 						message.Error = err.Error()
@@ -562,8 +671,10 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						utils.SendError(w, http.StatusInternalServerError, message)
 						return
 					}
-					sqlorder = fmt.Sprintf("select %s from %s.%s ", strings.Join(slicefields, ","), information.DBName, tablename)
+					sqlorder = fmt.Sprintf("select %s from %s.%s ",
+						strings.Join(slicefields, ","), information.DBName, tablename)
 				}
+
 				if len(filter) > 0 {
 					if strings.Contains(filter[0], " and ") {
 						var slicefilter []string
@@ -614,23 +725,8 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				} else {
 					sqlorder += fmt.Sprintf("offset 0 ")
 				}
-			}
 
-		case "mssql":
-			Source := fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUsername,
-				password,
-				information.DBHost,
-				information.DBPort,
-				information.DBName)
-			DB, err = repo.ConnectDb("mssql", Source)
-			if err != nil {
-				message.Error = err.Error()
-				utils.SendError(w, http.StatusInternalServerError, message)
-				return
-			}
-
-			if len(relateds) == 0 {
+			case "mssql":
 				if len(offset) == 0 {
 					if len(limit) > 0 {
 						sqlorder = fmt.Sprintf(`select top %s `, limit[0])
@@ -654,7 +750,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					} else if len(fields) == 0 {
 						rows, err = repo.Rowmanydata(DB,
 							fmt.Sprintf(`select COLUMN_NAME, Data_Type from %s.INFORMATION_SCHEMA.columns
-									 where TABLE_NAME='%s' `, information.DBName, tablename))
+										 where TABLE_NAME='%s' `, information.DBName, tablename))
 						defer rows.Close()
 						if err != nil {
 							message.Error = err.Error()
@@ -723,7 +819,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					} else {
 						sqlorder += fmt.Sprintf("order by (select 0)")
 					}
-				} else if len(offset) > 0 {
+				} else {
 					if len(fields) > 0 {
 						slicefields = strings.Split(fields[0], ",")
 						sqlorder = fmt.Sprintf("select * from(select %s, row_number() over ", fields[0])
@@ -836,9 +932,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					}
 				}
 			}
-		}
-
-		if len(relateds) == 0 {
 			var (
 				value     = make([]string, len(slicefields))
 				valuePtrs = make([]interface{}, len(slicefields)) //scan need pointer
@@ -886,7 +979,6 @@ func (c Controller) GetAllData() http.HandlerFunc {
 			var fieldsbylocal, typesbylocal []string
 			var otherfields, otherfilters, othergroups, otherorders []string
 			var keys [][]string
-			var firstdatas []map[string]interface{}
 
 			for i := range sliceofrelated {
 				splitbyunderline := strings.Split(sliceofrelated[i], "_by_")
@@ -960,6 +1052,11 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				}
 				if err = rows.Err(); err != nil {
 					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				if len(fieldsbylocal) == 0 && len(typesbylocal) == 0 {
+					message.Error = "The table does not exist."
 					utils.SendError(w, http.StatusInternalServerError, message)
 					return
 				}
@@ -1092,7 +1189,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						data[fieldsbylocal[i]] = value[i]
 					}
 				}
-				firstdatas = append(firstdatas, data)
+				datas = append(datas, data)
 			}
 			if err = rows.Err(); err != nil {
 				message.Error = err.Error()
@@ -1105,7 +1202,7 @@ func (c Controller) GetAllData() http.HandlerFunc {
 				var engine model.Engine
 				var join string
 				var joinfield, jointype, joinfilter, joingroup, joinorder []string
-				var joindatas []map[string]interface{}
+				var joindatas, results []map[string]interface{}
 				splitbydot := strings.Split(sliceofrelated[i], ".")
 				alias := splitbydot[0]
 				splitbypassword := strings.Split(splitbydot[1], "_password_")
@@ -1222,6 +1319,11 @@ func (c Controller) GetAllData() http.HandlerFunc {
 						utils.SendError(w, http.StatusInternalServerError, message)
 						return
 					}
+					if len(joinfield) == 0 && len(jointype) == 0 {
+						message.Error = "The table does not exist."
+						utils.SendError(w, http.StatusInternalServerError, message)
+						return
+					}
 
 					switch strings.ToLower(engine.DBType) {
 					case "mysql":
@@ -1320,18 +1422,29 @@ func (c Controller) GetAllData() http.HandlerFunc {
 					joindatas = append(joindatas, data)
 				}
 
-				for _, data := range firstdatas {
+				for _, data := range datas {
 					for _, join := range joindatas {
 						if len(joinkey) == 1 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] {
 								result := make(map[string]interface{})
 								for datakey, datavalue := range data {
 									for joinkey, joinvalue := range join {
-										result[datakey] = datavalue
-										result[joinkey] = joinvalue
+										if len(fields) > 0 {
+											for _, field := range slicefields {
+												if field == datakey {
+													result[field] = datavalue
+												}
+												if field == joinkey {
+													result[field] = joinvalue
+												}
+											}
+										} else {
+											result[datakey] = datavalue
+											result[joinkey] = joinvalue
+										}
 									}
 								}
-								datas = append(datas, result)
+								results = append(results, result)
 							}
 						} else if len(joinkey) == 2 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
@@ -1339,11 +1452,22 @@ func (c Controller) GetAllData() http.HandlerFunc {
 								result := make(map[string]interface{})
 								for datakey, datavalue := range data {
 									for joinkey, joinvalue := range join {
-										result[datakey] = datavalue
-										result[joinkey] = joinvalue
+										if len(fields) > 0 {
+											for _, field := range slicefields {
+												if field == datakey {
+													result[field] = datavalue
+												}
+												if field == joinkey {
+													result[field] = joinvalue
+												}
+											}
+										} else {
+											result[datakey] = datavalue
+											result[joinkey] = joinvalue
+										}
 									}
 								}
-								datas = append(datas, result)
+								results = append(results, result)
 							}
 						} else if len(joinkey) == 3 {
 							if data[tablename+"."+joinkey[0]] == join[table+"."+joinkey[0]] &&
@@ -1353,19 +1477,48 @@ func (c Controller) GetAllData() http.HandlerFunc {
 								for datakey, datavalue := range data {
 									for joinkey, joinvalue := range join {
 										if len(fields) > 0 {
+											for _, field := range slicefields {
+												if field == datakey {
+													result[field] = datavalue
+												}
+												if field == joinkey {
+													result[field] = joinvalue
+												}
+											}
+										} else {
 											result[datakey] = datavalue
 											result[joinkey] = joinvalue
 										}
-
 									}
 								}
-								datas = append(datas, result)
+								results = append(results, result)
 							}
 						}
+						datas = results
 					}
 				}
-
 			}
+
+			if len(offset) > 0 {
+				n, err := strconv.Atoi(offset[0])
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				datas = datas[n:]
+			}
+
+			if len(limit) > 0 {
+				n, err := strconv.Atoi(limit[0])
+				if err != nil {
+					message.Error = err.Error()
+					utils.SendError(w, http.StatusInternalServerError, message)
+					return
+				}
+				datas = datas[:n]
+			}
+
 		}
 		utils.SendSuccess(w, datas)
 	}
@@ -1374,12 +1527,13 @@ func (c Controller) GetAllData() http.HandlerFunc {
 //Duplicate :CHECK
 func Duplicate(a []string, b []string, name string) []string {
 	check := make(map[string]int)
+	c := make([]string, len(b))
 
 	for i := range b {
-		b[i] = name + "." + b[i]
+		c[i] = name + "." + b[i]
 	}
 
-	d := append(a, b...)
+	d := append(a, c...)
 	res := make([]string, 0)
 	for _, val := range d {
 		check[val] = 1
