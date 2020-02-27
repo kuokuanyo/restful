@@ -24,14 +24,14 @@ import (
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param fields query array true "set fields for adding value" If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
-//@Param filter query array false "SQL-like filter to delete records." If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
+//@Param filter query string false "SQL-like filter to limit the records to retrieve." If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource." example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [delete]
 func (c Controller) DeleteData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -630,21 +630,21 @@ func (c Controller) DeleteData() http.HandlerFunc {
 	}
 }
 
-//UpdateData :Update (replace) one or more records.
-//@Summary Update (replace) one or more records.
+//UpdateData :Update one or more records.
+//@Summary Update one or more records.
 //@Tags Table
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
-//@Param fields query array true "set fields for adding value" If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
-//@Param filter query string false "SQL-like filter to limit the records to retrieve. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
-//@Param related query array false "Comma-delimited list of related names to retrieve for each resource." example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Param condition body models.Description true "condition of Updating"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param fields query array true "set fields for adding value If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
+//@Param filter query string false "SQL-like filter to limit the records to retrieve. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
+//@Param condition body model.Description true "condition of Updating"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [put]
 func (c Controller) UpdateData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -791,7 +791,7 @@ func (c Controller) UpdateData() http.HandlerFunc {
 					case "mysql":
 						row = repo.RowOneData(DB,
 							fmt.Sprintf(`select Data_Type from INFORMATION_SCHEMA.columns where TABLE_SCHEMA='%s' 
-						abd TABLE_NAME='%s' and COLUMN_NAME='%s'`,
+						and TABLE_NAME='%s' and COLUMN_NAME='%s'`,
 								information.DBName, tablename, slicefields[i]))
 					case "mssql":
 						row = repo.RowOneData(DB,
@@ -1256,14 +1256,14 @@ func (c Controller) UpdateData() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
-//@Param fields query array true "set fields for adding value" If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)
-//@Param related query array false "Comma-delimited list of related names to retrieve for each resource." example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Param value body models.InsertValue true "Insert value for adding"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param table_name path string true "Name of the table to perform operations on."
+//@Param fields query array true "set fields for adding value" If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
+//@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
+//@Param value body model.InsertValue true "Insert value for adding"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [post]
 func (c Controller) AddData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1858,8 +1858,8 @@ func (c Controller) AddData() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
-//@Param table_name path string true "Name of the table to perform operations on."
 //@Param db_password query string true "database engine password"
+//@Param table_name path string true "Name of the table to perform operations on."
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
 //@Param filter query string false "SQL-like filter to limit the records to retrieve. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
@@ -1867,9 +1867,9 @@ func (c Controller) AddData() http.HandlerFunc {
 //@Param offset query integer false "Set to offset the filter results to a particular record count."
 //@Param order query string false "SQL-like order containing field and direction for filter results. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param group query string false "Comma-delimited list of the fields used for grouping of filter results. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name} [get]
 func (c Controller) GetAllData() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -13,154 +13,148 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-//DeleteDB :delete information of database from table engines by some conditions.
-//@Summary delete information of database from table engines by some conditions.
+//DeleteDB :delete information from database engines by some db_alias.
+//@Summary delete information from database engines by some db_alias.
 //@Tags DataBase
 //@Accept json
 //@Produce json
-//@Param filter string array false "SQL-like filter to limit the records to retrieve.if no condition of filter, all datas could delete."
-//@Success 200 {object} models.object "Successfully"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param db_alias query string true "db_alias for deleting"
+//@Success 200 {object} model.Engine "Successfully"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_engine [delete]
 func (c Controller) DeleteDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			message model.Error
-			repo    repository.Repository
-			filter  = r.URL.Query()["filter"]
-			sql     string
+			message     model.Error
+			repo        repository.Repository
+			alias       = r.URL.Query()["db_alias"]
+			information model.Engine
+			sqlorder    string
 		)
+
 		if DBStoring == nil {
 			message.Error = "Please connect the database for storing informations of engine."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if len(filter) > 0 {
-			if strings.Contains(filter[0], " and ") {
-				var newfilter []string
-				split := strings.Split(filter[0], " and ")
-				for i := 0; i < len(split); i++ {
-					s := split[i]
-					splitequal := strings.Split(s, "=")
-					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-					j := strings.Join(splitequal, "=")
-					newfilter = append(newfilter, j)
-				}
-				j := strings.Join(newfilter, " and ")
-				switch strings.ToLower(Storing.DBType) {
-				case "mysql":
-					sql += fmt.Sprintf("delete from engines where %s ", j)
-				case "mssql":
-					sql += fmt.Sprintf("use %s; delete from engines where %s ", Storing.DBName, j)
-				}
-			} else if strings.Contains(filter[0], " or ") {
-				var slicefilter []string
-				split := strings.Split(filter[0], " or ")
-				for i := 0; i < len(split); i++ {
-					s := split[i]
-					splitequal := strings.Split(s, "=")
-					splitequal[1] = fmt.Sprintf(`'%s'`, splitequal[1])
-					j := strings.Join(splitequal, "=")
-					slicefilter = append(slicefilter, j)
-				}
-				j := strings.Join(slicefilter, " or ")
-				switch strings.ToLower(Storing.DBType) {
-				case "mysql":
-					sql += fmt.Sprintf("delete from engines where %s ", j)
-				case "mssql":
-					sql += fmt.Sprintf("use %s; delete from engines where %s ", Storing.DBName, j)
-				}
-			} else if strings.Contains(filter[0], "like") {
-				switch strings.ToLower(Storing.DBType) {
-				case "mysql":
-					sql += fmt.Sprintf("delete from engines where %s ", filter[0])
-				case "mssql":
-					sql += fmt.Sprintf("use %s; delete from engines where %s ", Storing.DBName, filter[0])
-				}
-			} else {
-				split := strings.Split(filter[0], "=")
-				split[1] = fmt.Sprintf(`'%s'`, split[1])
-				j := strings.Join(split, "=")
-				switch strings.ToLower(Storing.DBType) {
-				case "mysql":
-					sql += fmt.Sprintf("delete from engines where %s ", j)
-				case "mssql":
-					sql += fmt.Sprintf("use %s; delete from engines where %s ", Storing.DBName, j)
-				}
-			}
-		} else {
+
+		if len(alias) > 0 {
 			switch strings.ToLower(Storing.DBType) {
 			case "mysql":
-				sql = "delete from engines"
+				sqlorder = fmt.Sprintf(`select * from engines where db_alias='%s'`, alias[0])
 			case "mssql":
-				sql = fmt.Sprintf("use %s; delete from engines", Storing.DBName)
+				sqlorder = fmt.Sprintf(`select * from %s.dbo.engines where db_alias='%s'`,
+					Storing.DBName, alias[0])
 			}
+
+			row := repo.RowOneData(DBStoring, sqlorder)
+			if err := row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
+				&information.DBPassword, &information.DBHost, &information.DBPort,
+				&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+
+			switch strings.ToLower(Storing.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf("delete from engines where db_alias='%s' ", alias[0])
+			case "mssql":
+				sqlorder = fmt.Sprintf("delete from %s.dbo.engines where db_alias='%s' ", Storing.DBName, alias[0])
+			}
+		} else {
+			message.Error = "Must have parameter of db_alias."
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
-		if err := repo.Exec(DBStoring, sql); err != nil {
+
+		if err := repo.Exec(DBStoring, sqlorder); err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		if len(filter) > 0 {
-			utils.SendSuccess(w, "Successfully.")
-		} else {
-			utils.SendSuccess(w, "All records are deleted.")
-		}
+
+		utils.SendSuccess(w, information)
 	}
 }
 
-//UpdateDB :update alias of database from table engines(only could update alias)
-//@Summary update alias of database from table engines(only could update alias)
+//UpdateDB :update alias of database from database engines(only could update alias)
+//@Summary update alias of database from database engines(only could update alias)
 //@Tags DataBase
 //@Accept json
 //@Produce json
-//@Param old_alias query string false "old_alias"
-//@Param old_alias query string false "new_alias"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param old_alias query string true "old_alias"
+//@Param new_alias query string true "new_alias"
+//@Success 200 {object} model.Engine "Successfully"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_engine [put]
 func (c Controller) UpdateDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			message  model.Error
-			repo     repository.Repository
-			oldalias = r.URL.Query()["old_alias"]
-			newalias = r.URL.Query()["new_alias"]
-			sqlorder string
+			message     model.Error
+			repo        repository.Repository
+			oldalias    = r.URL.Query()["old_alias"]
+			newalias    = r.URL.Query()["new_alias"]
+			information model.Engine
+			sqlorder    string
+			err         error
 		)
+
 		if DBStoring == nil {
 			message.Error = "Please connect the database for storing informations of engine."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		if len(oldalias) > 0 && len(newalias) > 0 {
 			switch strings.ToLower(Storing.DBType) {
 			case "mysql":
 				sqlorder = fmt.Sprintf(`update engines set db_alias="%s" where db_alias="%s"`,
 					newalias[0], oldalias[0])
 			case "mssql":
-				sqlorder = fmt.Sprintf(`use %s; update engines set db_alias='%s' where db_alias='%s'`,
+				sqlorder = fmt.Sprintf(`update %s.dbo.engines set db_alias='%s' where db_alias='%s'`,
 					Storing.DBName, newalias[0], oldalias[0])
 			}
-			if err := repo.Exec(DBStoring, sqlorder); err != nil {
+
+			if err = repo.Exec(DBStoring, sqlorder); err != nil {
 				message.Error = err.Error()
 				utils.SendError(w, http.StatusInternalServerError, message)
 				return
 			}
-			utils.SendSuccess(w, "Successfully.")
+
+			switch strings.ToLower(Storing.DBType) {
+			case "mysql":
+				sqlorder = fmt.Sprintf(`select * from engines where db_alias='%s'`, newalias[0])
+			case "mssql":
+				sqlorder = fmt.Sprintf(`select * from %s.dbo.engines where db_alias='%s'`,
+					Storing.DBName, newalias[0])
+			}
+
+			row := repo.RowOneData(DBStoring, sqlorder)
+			if err = row.Scan(&information.DBAlias, &information.DBType, &information.DBUsername,
+				&information.DBPassword, &information.DBHost, &information.DBPort,
+				&information.DBName, &information.Maxidle, &information.Maxopen); err != nil {
+				message.Error = err.Error()
+				utils.SendError(w, http.StatusInternalServerError, message)
+				return
+			}
+
+			utils.SendSuccess(w, information)
 		} else {
-			utils.SendSuccess(w, "No execute update command.")
+			message.Error = "Must have parameters of old_alias and new_alias"
+			utils.SendError(w, http.StatusInternalServerError, message)
+			return
 		}
 	}
 }
 
-//GetAllDB :get all db_alias information from table engines
-//@Summary get all db_alias information from table engines
+//GetAllDB :get all information from database engines
+//@Summary get all information from database engines
 //@Tags DataBase
 //@Accept json
 //@Produce json
-//@Success 200 {object} models.object "Successfully"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Success 200 {object} model.Engine "Successfully"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_engine [get]
 func (c Controller) GetAllDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -171,17 +165,20 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 			err          error
 			sqlorder     string
 		)
+
 		if DBStoring == nil {
 			message.Error = "Please connect the database for storing informations of engine."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		switch strings.ToLower(Storing.DBType) {
 		case "mysql":
 			sqlorder = fmt.Sprintln("select * from engines")
 		case "mssql":
-			sqlorder = fmt.Sprintf(`use %s; select * from engines`, Storing.DBName)
+			sqlorder = fmt.Sprintf(`select * from %s.dbo.engines`, Storing.DBName)
 		}
+		
 		rows, err := repo.Rowmanydata(DBStoring, sqlorder)
 		defer rows.Close()
 		if err != nil {
@@ -201,18 +198,19 @@ func (c Controller) GetAllDB() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		utils.SendSuccess(w, informations)
 	}
 }
 
-//ConnectDB :Add information of database to database engine
-//@Summary Add information of database to database engine
+//ConnectDB :Add  information to database engine
+//@Summary Add information to database engine
 //@Tags DataBase
 //@Accept json
 //@Produce json
-//@Param information body models.DBInformation true "information of database"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param information body model.DBInformation true "information of database engine"
+//@Success 200 {object} model.Engine "Successfully"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_engine [post]
 func (c Controller) ConnectDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -224,34 +222,33 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			Source      string
 			insert      string
 		)
+
 		if DBStoring == nil {
 			message.Error = "Please connect the database for storing the engines."
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		json.NewDecoder(r.Body).Decode(&information) //decode dbinformation
+
 		switch strings.ToLower(information.DBType) {
 		case "mysql":
 			Source = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-				information.DBUsername,
-				information.DBPassword,
-				information.DBHost,
-				information.DBPort,
-				information.DBName)
+				information.DBUsername, information.DBPassword, information.DBHost,
+				information.DBPort, information.DBName)
 		case "mssql":
 			Source = fmt.Sprintf("sqlserver://%s:%s@%s:%s? database=%s",
-				information.DBUsername,
-				information.DBPassword,
-				information.DBHost,
-				information.DBPort,
-				information.DBName)
+				information.DBUsername, information.DBPassword, information.DBHost,
+				information.DBPort, information.DBName)
 		}
+
 		_, err = repo.ConnectDb(information.DBType, Source)
 		if err != nil {
 			message.Error = err.Error()
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
+
 		//encrypt password
 		//func GenerateFromPassword(password []byte, cost int) ([]byte, error)
 		hash, err := bcrypt.GenerateFromPassword([]byte(information.DBPassword), 10)
@@ -261,6 +258,7 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			return
 		}
 		information.DBPassword = string(hash)
+
 		switch strings.ToLower(Storing.DBType) {
 		case "mysql":
 			insert = fmt.Sprintf(`insert into engines values ("%s", "%s", "%s", "%s", "%s", "%s", "%s", %d, %d)`,
@@ -268,7 +266,7 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 				information.DBPassword, information.DBHost, information.DBPort,
 				information.DBName, information.Maxidle, information.Maxopen)
 		case "mssql":
-			insert = fmt.Sprintf(`use %s; insert into engines values ('%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)`,
+			insert = fmt.Sprintf(`insert into %s.dbo.engines values ('%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d)`,
 				Storing.DBName, information.DBAlias, information.DBType, information.DBUsername,
 				information.DBPassword, information.DBHost, information.DBPort,
 				information.DBName, information.Maxidle, information.Maxopen)
@@ -278,6 +276,7 @@ func (c Controller) ConnectDB() http.HandlerFunc {
 			utils.SendError(w, http.StatusInternalServerError, message)
 			return
 		}
-		utils.SendSuccess(w, "Successfully.")
+
+		utils.SendSuccess(w, information)
 	}
 }

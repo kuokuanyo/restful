@@ -24,14 +24,14 @@ import (
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
+//@Param db_password query string true "database engine password"
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param id path int true "Identifier of the record to retrieve."
-//@Param db_password query string true "database engine password"
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name}/{id} [delete]
 func (c Controller) DeleteDataByid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -559,21 +559,21 @@ func (c Controller) DeleteDataByid() http.HandlerFunc {
 	}
 }
 
-//UpdateDataByid :Replace the content of one record by identifier.
-//@Summary Replace the content of one record by identifier.
+//UpdateDataByid :Update one record by identifier.
+//@Summary Update (patch) one record by identifier.
 //@Tags Table By ID(id is primary key)
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
+//@Param db_password query string true "database engine password"
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param id path int true "Identifier of the record to retrieve."
-//@Param db_password query string true "database engine password"
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Param condition body models.Description true "condition of Updating"
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Param condition body model.Description true "condition of Updating"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name}/{id} [put]
 func (c Controller) UpdateDataByid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1128,14 +1128,14 @@ func (c Controller) UpdateDataByid() http.HandlerFunc {
 //@Accept json
 //@Produce json
 //@Param db_alias path string true "database engine alias"
+//@Param db_password query string true "database engine password"
 //@Param table_name path string true "Name of the table to perform operations on."
 //@Param id path int true "Identifier of the record to retrieve."
-//@Param db_password query string true "database engine password"
 //@Param fields query array false "Comma-delimited list of properties to be returned for each resource, "*" returns all properties. If using related parameters, please clearly indicate the table name and field name (for example: table.fielaname)"
 //@Param related query array false "Comma-delimited list of related names to retrieve for each resource. example: [alias].[table]_password_[password]_by_[key1]_and_[key2]_and_..."
-//@Success 200 {object} models.object "Successfully"
-//@Failure 401 {object} models.Error "Unauthorized"
-//@Failure 500 {object} models.Error "Internal Server Error"
+//@Success 200 {object} model.object "Successfully"
+//@Failure 401 {object} model.Error "Unauthorized"
+//@Failure 500 {object} model.Error "Internal Server Error"
 //@Router /v1/_table/{db_alias}/{table_name}/{id} [get]
 func (c Controller) GetDataByid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
